@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 
 const SITE = resolveSiteUrl();
 
@@ -38,7 +39,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className="min-h-screen bg-bg-primary text-text-primary">{children}</body>
+      <body className="min-h-screen bg-bg-primary text-text-primary">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

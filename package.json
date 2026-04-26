@@ -15,6 +15,7 @@
     "@google/genai": "^1.50.1",
     "@mediapipe/tasks-vision": "^0.10.34",
     "@supabase/supabase-js": "^2.104.1",
+    "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.23.24",
     "howler": "^2.2.4",
     "html2canvas": "^1.4.1",
