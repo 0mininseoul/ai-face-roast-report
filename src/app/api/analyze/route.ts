@@ -5,6 +5,7 @@ import { readAnalyzeSystemPrompt } from "@/lib/gemini/prompts";
 import { normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
+import { logServiceEvent } from "@/lib/telemetry/server";
 import type { AnalyzeRequestBody, AnalyzeSseEvent, ReportSections } from "@/types/analysis";
 
 export const runtime = "nodejs";
@@ -13,6 +14,13 @@ export async function POST(req: NextRequest) {
   const ip = ipFromRequest(req);
   const limit = checkRateLimit(`analyze:${ip}`);
   if (!limit.ok) {
+    await logServiceEvent({
+      req,
+      eventName: "analysis_rate_limited",
+      phase: "server_request",
+      level: "warn",
+      payload: { retryAfterSec: limit.retryAfterSec },
+    });
     return Response.json({ error: "rate_limited", retryAfter: limit.retryAfterSec }, { status: 429 });
   }
 
@@ -20,12 +28,32 @@ export async function POST(req: NextRequest) {
   try {
     body = (await req.json()) as AnalyzeRequestBody;
   } catch {
+    await logServiceEvent({ req, eventName: "analysis_invalid_json", phase: "server_request", level: "warn" });
     return new Response("Invalid JSON", { status: 400 });
   }
 
   if (!body.gender || !body.metrics || !body.imageBase64) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_missing_required_fields",
+      phase: "server_request",
+      level: "warn",
+      payload: { hasGender: Boolean(body.gender), hasMetrics: Boolean(body.metrics), hasImage: Boolean(body.imageBase64) },
+    });
     return new Response("Missing required fields", { status: 400 });
   }
+
+  await logServiceEvent({
+    req,
+    sessionId: body.clientSessionId,
+    eventName: "analysis_request_received",
+    phase: "server_request",
+    payload: {
+      gender: body.gender,
+      captureBytesApprox: Math.round(stripDataUrl(body.imageBase64).length * 0.75),
+    },
+  });
 
   const supabase = getServerSupabase();
   const hashedIp = await ipHash(ip);
@@ -45,10 +73,27 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (insertError || !inserted?.id) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_report_create_failed",
+      phase: "server_storage",
+      level: "error",
+      payload: { message: insertError?.message ?? "missing inserted id" },
+    });
     return new Response("Failed to create report", { status: 500 });
   }
 
   const reportId = String(inserted.id);
+  await logServiceEvent({
+    req,
+    sessionId: body.clientSessionId,
+    reportId,
+    eventName: "analysis_report_created",
+    phase: "server_storage",
+    payload: { gender: body.gender },
+  });
+
   const cleanBase64 = stripDataUrl(body.imageBase64);
   const imageBuffer = Buffer.from(cleanBase64, "base64");
   const facePath = `${reportId}/capture.jpg`;
@@ -60,23 +105,59 @@ export async function POST(req: NextRequest) {
 
   if (uploadError) {
     await supabase.from("face_reports").update({ status: "failed" }).eq("id", reportId);
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      reportId,
+      eventName: "analysis_image_upload_failed",
+      phase: "server_storage",
+      level: "error",
+      payload: { message: uploadError.message },
+    });
     return new Response("Failed to store face image", { status: 500 });
   }
 
   await supabase.from("face_reports").update({ face_image_path: facePath }).eq("id", reportId);
+  await logServiceEvent({
+    req,
+    sessionId: body.clientSessionId,
+    reportId,
+    eventName: "analysis_image_uploaded",
+    phase: "server_storage",
+    payload: { bytes: imageBuffer.length },
+  });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const eventWrites: Array<Promise<void>> = [];
+      const record = (eventName: string, payload?: Record<string, unknown>, level: "debug" | "info" | "warn" | "error" = "info") => {
+        const write = logServiceEvent({
+          req,
+          sessionId: body.clientSessionId,
+          reportId,
+          eventName,
+          phase: "server_stream",
+          level,
+          payload,
+        }).catch(() => undefined);
+        eventWrites.push(write);
+        return write;
+      };
       const send = (event: AnalyzeSseEvent) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
 
       try {
         send({ type: "report_id", reportId });
+        void record("analysis_sse_report_id_sent");
 
         const ai = getGenAi();
         const systemInstruction = await readAnalyzeSystemPrompt();
+        await record("analysis_gemini_stream_started", {
+          model: MODEL_ANALYSIS,
+          promptChars: systemInstruction.length,
+        });
         const response = await ai.models.generateContentStream({
           model: MODEL_ANALYSIS,
           contents: [
@@ -97,11 +178,14 @@ export async function POST(req: NextRequest) {
         });
 
         let raw = "";
+        let chunkCount = 0;
         for await (const chunk of response) {
           const text = chunk.text ?? "";
           if (!text) continue;
           raw += text;
+          chunkCount += 1;
           send({ type: "chunk", text });
+          void record("analysis_gemini_chunk", { chunkCount, chunkChars: text.length, totalChars: raw.length }, "debug");
         }
 
         const sections = parseReport(raw);
@@ -115,10 +199,14 @@ export async function POST(req: NextRequest) {
           .eq("id", reportId);
 
         send({ type: "complete", reportId, sections });
+        await record("analysis_report_completed", { chunkCount, totalChars: raw.length });
       } catch (error) {
         await supabase.from("face_reports").update({ status: "failed" }).eq("id", reportId);
-        send({ type: "error", message: error instanceof Error ? error.message : "Unknown analysis error" });
+        const message = error instanceof Error ? error.message : "Unknown analysis error";
+        await record("analysis_report_failed", { message }, "error");
+        send({ type: "error", message });
       } finally {
+        await Promise.allSettled(eventWrites);
         controller.close();
       }
     },

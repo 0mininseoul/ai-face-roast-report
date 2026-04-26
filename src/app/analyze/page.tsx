@@ -9,9 +9,19 @@ import { ControlBar } from "@/components/analyze/ControlBar";
 import { FaceMeshOverlay } from "@/components/analyze/FaceMeshOverlay";
 import { LiveFeed } from "@/components/analyze/LiveFeed";
 import { Button } from "@/components/ui/Button";
+import {
+  COLLECTION_TIMEOUT_MS,
+  LONG_WAIT_MS,
+  TARGET_SAMPLE_COUNT,
+  appendLandmarkSample,
+  canStartAnalysis,
+  sampleProgressBucket,
+  type AnalysisTrigger,
+} from "@/lib/analysis/sampling";
 import { captureVideoFrame, downloadElementScreenshot } from "@/lib/capture/screenshot";
 import { averageLandmarks, computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
 import { setMuted as setGlobalMuted, playSfx } from "@/lib/sound/sfx";
+import { getClientSessionId, logClientEvent } from "@/lib/telemetry/client";
 import { useAnalysisStream } from "@/hooks/useAnalysisStream";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceLandmarker } from "@/hooks/useFaceLandmarker";
@@ -56,31 +66,153 @@ function AnalyzeClient() {
   const gender = searchParams.get("gender") as Gender | null;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef(false);
+  const faceVisibleRef = useRef(false);
+  const firstLandmarkLoggedRef = useRef(false);
+  const lastSampleLogRef = useRef(0);
+  const longWaitLoggedRef = useRef(false);
+  const reportIdRef = useRef<string | null>(null);
   const sampleRef = useRef<Landmark[][]>([]);
+  const [sampleCount, setSampleCount] = useState(0);
   const [visibleCount, setVisibleCount] = useState(0);
   const [muted, setMuted] = useState(false);
   const [liveComments, setLiveComments] = useState<string[]>([]);
   const [faceWarning, setFaceWarning] = useState<string | null>(null);
-  const { videoRef, streamRef, status, error, start } = useCamera({ persistGlobal: true });
+  const [clientError, setClientError] = useState<string | null>(null);
+  const { videoRef, status, error, start } = useCamera({ persistGlobal: true });
   const { result, landmarks, isLoading } = useFaceLandmarker(videoRef, status === "ready");
-  const { state, start: startAnalysis } = useAnalysisStream();
+  const logEvent = useCallback((eventName: string, payload?: Record<string, unknown>, reportId?: string | null, level: "debug" | "info" | "warn" | "error" = "info") => {
+    logClientEvent({ eventName, payload, reportId: reportId ?? reportIdRef.current, level });
+  }, []);
+  const handleAnalysisEvent = useCallback(
+    (eventName: string, payload?: Record<string, unknown>, reportId?: string | null) => {
+      if (reportId) reportIdRef.current = reportId;
+      logEvent(eventName, payload, reportId);
+    },
+    [logEvent],
+  );
+  const { state, start: startAnalysis } = useAnalysisStream({ onEvent: handleAnalysisEvent });
 
   useEffect(() => {
     if (gender !== "male" && gender !== "female") router.replace("/");
   }, [gender, router]);
 
   useEffect(() => {
+    if (!gender) return;
+    logEvent("analyze_page_opened", { gender });
+  }, [gender, logEvent]);
+
+  useEffect(() => {
     void start();
   }, [start]);
 
   useEffect(() => {
+    logEvent("camera_status_changed", { status, hasError: Boolean(error) }, null, status === "error" || status === "denied" ? "error" : "info");
+  }, [error, logEvent, status]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    logEvent(isLoading ? "facemesh_model_loading" : "facemesh_model_ready", { status });
+  }, [isLoading, logEvent, status]);
+
+  const beginAnalysis = useCallback(
+    (samples: Landmark[][], trigger: AnalysisTrigger) => {
+      if (!gender || startedRef.current || status !== "ready" || !videoRef.current || !canStartAnalysis(samples.length, trigger)) return false;
+
+      const selectedSamples = samples.slice(-TARGET_SAMPLE_COUNT);
+      logEvent("face_sample_collection_complete", { trigger, sampleCount: selectedSamples.length });
+      setClientError(null);
+      setSampleCount(selectedSamples.length);
+      reportIdRef.current = null;
+      startedRef.current = true;
+
+      try {
+        const averaged = averageLandmarks(selectedSamples);
+        const metrics = computeFaceMetrics(averaged);
+        const imageBase64 = captureVideoFrame(videoRef.current, 1280, 720, 0.85);
+        logEvent("analysis_client_payload_ready", { trigger, sampleCount: selectedSamples.length, gender });
+        void startAnalysis({
+          gender,
+          metrics,
+          landmarks: averaged,
+          imageBase64,
+          clientSessionId: getClientSessionId(),
+        }).catch((caught) => {
+          const message = caught instanceof Error ? caught.message : "분석 요청 실패";
+          logEvent("analysis_client_request_failed", { message }, null, "error");
+          setClientError(message);
+        });
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : "얼굴 좌표 계산 실패";
+        logEvent("analysis_client_prepare_failed", { message }, null, "error");
+        setClientError("얼굴 좌표 계산 중 오류가 발생했습니다. 처음으로 돌아가 다시 시도해 주세요.");
+      }
+
+      return true;
+    },
+    [gender, logEvent, startAnalysis, status, videoRef],
+  );
+
+  useEffect(() => {
     if (!landmarks) {
+      if (faceVisibleRef.current) logEvent("face_landmarks_lost", { sampleCount: sampleRef.current.length }, null, "warn");
+      faceVisibleRef.current = false;
+      sampleRef.current = [];
+      setSampleCount(0);
       setFaceWarning("얼굴이 잘 보이도록 자세를 잡아주세요");
       return;
     }
-    setFaceWarning(result?.faceLandmarks && result.faceLandmarks.length > 1 ? "가장 큰 얼굴 1개만 분석합니다" : null);
-    sampleRef.current = [...sampleRef.current.slice(-120), landmarks];
-  }, [landmarks, result]);
+
+    const faceCount = result?.faceLandmarks?.length ?? 1;
+    const nextSamples = appendLandmarkSample(sampleRef.current, landmarks);
+    faceVisibleRef.current = true;
+    sampleRef.current = nextSamples;
+    setSampleCount(nextSamples.length);
+    setFaceWarning(faceCount > 1 ? "가장 큰 얼굴 1개만 분석합니다" : null);
+
+    if (!firstLandmarkLoggedRef.current) {
+      firstLandmarkLoggedRef.current = true;
+      logEvent("face_landmarks_detected", { faceCount, sampleCount: nextSamples.length });
+    }
+
+    const sampleBucket = sampleProgressBucket(nextSamples.length);
+    if (sampleBucket > 0 && sampleBucket !== lastSampleLogRef.current) {
+      lastSampleLogRef.current = sampleBucket;
+      logEvent("face_sample_collection_progress", { sampleCount: nextSamples.length, targetSampleCount: TARGET_SAMPLE_COUNT });
+    }
+
+    if (canStartAnalysis(nextSamples.length, "target_samples")) {
+      beginAnalysis(nextSamples, "target_samples");
+    }
+  }, [beginAnalysis, landmarks, logEvent, result]);
+
+  useEffect(() => {
+    if (status !== "ready" || startedRef.current) return;
+    longWaitLoggedRef.current = false;
+    logEvent("face_sample_collection_started", { targetSampleCount: TARGET_SAMPLE_COUNT, fallbackAfterMs: COLLECTION_TIMEOUT_MS });
+
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      if (startedRef.current) {
+        window.clearInterval(interval);
+        return;
+      }
+
+      const elapsedMs = Date.now() - startedAt;
+      const samples = sampleRef.current;
+      if (elapsedMs >= COLLECTION_TIMEOUT_MS && canStartAnalysis(samples.length, "timeout_fallback")) {
+        logEvent("face_sample_collection_timeout_fallback", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
+        beginAnalysis(samples, "timeout_fallback");
+        return;
+      }
+
+      if (elapsedMs >= LONG_WAIT_MS && !longWaitLoggedRef.current) {
+        longWaitLoggedRef.current = true;
+        logEvent("face_sample_collection_waiting_long", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
+      }
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, [beginAnalysis, logEvent, status]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -89,29 +221,25 @@ function AnalyzeClient() {
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!gender || startedRef.current || status !== "ready" || sampleRef.current.length < 24 || !videoRef.current) return;
-    startedRef.current = true;
-    const averaged = averageLandmarks(sampleRef.current);
-    const metrics = computeFaceMetrics(averaged);
-    const imageBase64 = captureVideoFrame(videoRef.current, 1280, 720, 0.85);
-    void startAnalysis({ gender, metrics, landmarks: averaged, imageBase64 });
-  }, [gender, startAnalysis, status, videoRef]);
-
   const cards = useMemo(() => buildCards(state.sections, state.raw), [state.raw, state.sections]);
 
   const requestLiveComment = useCallback(async () => {
     if (!gender || !state.reportId || !videoRef.current) return null;
+    logEvent("live_comment_client_request_started", { count: liveComments.length + 1 }, state.reportId);
     const imageBase64 = captureVideoFrame(videoRef.current, 640, 360, 0.72);
     const response = await fetch("/api/live-comment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reportId: state.reportId, gender, imageBase64 }),
+      body: JSON.stringify({ reportId: state.reportId, gender, imageBase64, clientSessionId: getClientSessionId() }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logEvent("live_comment_client_request_failed", { status: response.status }, state.reportId, "warn");
+      return null;
+    }
     const data = (await response.json()) as { comment: string };
+    logEvent("live_comment_client_received", { chars: data.comment.length }, state.reportId);
     return data.comment;
-  }, [gender, state.reportId, videoRef]);
+  }, [gender, liveComments.length, logEvent, state.reportId, videoRef]);
 
   useEffect(() => {
     if (!state.isComplete || liveComments.length >= 5) return;
@@ -131,12 +259,19 @@ function AnalyzeClient() {
   useEffect(() => {
     if (!state.reportId || liveComments.length < 5) return;
     const timer = window.setTimeout(() => {
+      logEvent("result_redirect_started", { liveCommentCount: liveComments.length }, state.reportId);
       router.push(`/result/${state.reportId}`);
     }, 1500);
     return () => window.clearTimeout(timer);
-  }, [liveComments.length, router, state.reportId]);
+  }, [liveComments.length, logEvent, router, state.reportId]);
 
-  const isFatal = status === "denied" || status === "error" || Boolean(state.error);
+  const isFatal = status === "denied" || status === "error" || Boolean(state.error) || Boolean(clientError);
+  const loadingMessage =
+    status !== "ready"
+      ? "카메라 초기화 중"
+      : isLoading
+        ? "MediaPipe 모델 로딩 중"
+        : `얼굴 안정 프레임 수집 중 ${Math.min(sampleCount, TARGET_SAMPLE_COUNT)}/${TARGET_SAMPLE_COUNT}`;
 
   return (
     <main ref={rootRef} className="relative h-screen overflow-hidden bg-black">
@@ -185,7 +320,7 @@ function AnalyzeClient() {
       {(status !== "ready" || isLoading || (!startedRef.current && !state.error)) && !isFatal && (
         <div className="fixed bottom-8 left-7 z-20 flex items-center gap-3 rounded-lg border border-border bg-black/45 px-4 py-3 text-sm font-semibold text-text-muted backdrop-blur">
           <Loader2 className="h-4 w-4 animate-spin text-accent-info" />
-          {status !== "ready" ? "카메라 초기화 중" : isLoading ? "MediaPipe 모델 로딩 중" : "얼굴 안정 프레임 수집 중"}
+          {loadingMessage}
         </div>
       )}
 
@@ -194,7 +329,7 @@ function AnalyzeClient() {
           <div className="glass-panel max-w-lg rounded-2xl p-8 text-center">
             <AlertTriangle className="mx-auto h-10 w-10 text-accent-bad" />
             <h1 className="mt-5 text-2xl font-extrabold">분석을 진행할 수 없습니다</h1>
-            <p className="mt-3 text-sm leading-6 text-text-muted">{state.error ?? error ?? "카메라 접근을 확인해 주세요."}</p>
+            <p className="mt-3 text-sm leading-6 text-text-muted">{clientError ?? state.error ?? error ?? "카메라 접근을 확인해 주세요."}</p>
             <Button className="mt-6" onClick={() => router.push("/")}>
               처음으로
             </Button>

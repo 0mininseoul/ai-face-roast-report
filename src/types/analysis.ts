@@ -92,6 +92,7 @@ export interface AnalyzeRequestBody {
   metrics: FaceMetrics;
   landmarks?: Landmark[];
   imageBase64: string;
+  clientSessionId?: string;
 }
 
 export type AnalyzeSseEvent =
