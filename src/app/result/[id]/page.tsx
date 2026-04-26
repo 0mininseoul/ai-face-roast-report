@@ -5,6 +5,7 @@ import { FaceImage } from "@/components/result/FaceImage";
 import { MainCopy } from "@/components/result/MainCopy";
 import { ResultHeader } from "@/components/result/ResultHeader";
 import { StopCameraOnMount } from "@/components/result/StopCameraOnMount";
+import { pickMainCopy } from "@/lib/copy/mainCopy";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { reportSectionsSchema, type FaceReportRow } from "@/types/analysis";
 
@@ -22,15 +23,15 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
-  const mainCopy = row.main_copy ?? sections.mainCopy;
+  const mainCopy = pickMainCopy(row.gender, row.id);
 
   return (
     <main className="min-h-screen">
       <StopCameraOnMount />
       <ResultHeader mainCopy={mainCopy} faceImageUrl={faceUrl} resultUrl={resultUrl} />
       <MainCopy text={mainCopy} />
-      <FaceImage src={faceUrl} reportId={row.id} createdAt={row.created_at} />
-      <DetailedReport sections={sections} reportId={row.id} />
+      <FaceImage src={faceUrl} createdAt={row.created_at} />
+      <DetailedReport sections={sections} />
     </main>
   );
 }

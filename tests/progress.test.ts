@@ -9,11 +9,11 @@ describe("analysis progress", () => {
   it("uses percent ranges for each process stage", () => {
     expect(progress({ cameraStatus: "requesting" }).percent).toBe(8);
     expect(progress({ isModelLoading: true }).percent).toBe(18);
+    expect(progress({ isModelLoading: true }).label).toBe("얼굴 인식 모델 로딩");
     expect(progress({ sampleCount: 9 }).percent).toBe(36);
     expect(progress({ hasStarted: true }).percent).toBe(54);
-    expect(progress({ hasStarted: true, hasReportId: true, rawChars: 2600 }).percent).toBe(73);
-    expect(progress({ hasStarted: true, hasReportId: true, isComplete: true, liveCommentCount: 3 }).percent).toBe(95);
-    expect(progress({ hasStarted: true, hasReportId: true, isComplete: true, liveCommentCount: 5 }).percent).toBe(100);
+    expect(progress({ hasStarted: true, hasReportId: true, rawChars: 2600 }).percent).toBe(75);
+    expect(progress({ hasStarted: true, hasReportId: true, isComplete: true }).percent).toBe(100);
   });
 });
 
@@ -26,7 +26,6 @@ function progress(overrides: Partial<Parameters<typeof getAnalysisProgress>[0]>)
     rawChars: 0,
     hasReportId: false,
     isComplete: false,
-    liveCommentCount: 0,
     ...overrides,
   });
 }

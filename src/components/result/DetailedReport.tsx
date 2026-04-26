@@ -10,9 +10,9 @@ const PART_LABEL = {
   skin: "피부",
 } as const;
 
-export function DetailedReport({ sections, reportId }: { sections: ReportSections; reportId: string }) {
+export function DetailedReport({ sections }: { sections: ReportSections }) {
   return (
-    <section className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-8 pb-24">
+    <section className="mx-auto grid max-w-[1500px] grid-cols-2 gap-6 px-8 pb-24">
       <Panel title="§ 1. 안면 기하학">
         <Text label="대칭" value={sections.geometry.asymmetry} />
         <Text label="황금비" value={sections.geometry.phi} />
@@ -63,8 +63,9 @@ export function DetailedReport({ sections, reportId }: { sections: ReportSection
         <p className="whitespace-pre-line text-lg font-semibold leading-9 text-text-primary">{sections.conclusion}</p>
       </Panel>
 
-      <footer className="col-span-2 text-center text-xs text-text-faint">
-        Analysis ID: {reportId} / {sections.meta.complianceText}
+      <footer className="col-span-2 text-center text-xs leading-5 text-text-faint">
+        <span className="block">본 보고서는 AI가 통계적, 기하학적 분석을 통해 생성한 결과이며, 오락적 목적으로만 사용되어야 합니다.</span>
+        <span className="block">{sections.meta.complianceText}</span>
       </footer>
     </section>
   );

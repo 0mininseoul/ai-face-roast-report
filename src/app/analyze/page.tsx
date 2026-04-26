@@ -3,11 +3,11 @@
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { AnalysisCard } from "@/components/analyze/AnalysisCard";
+import { CardConnectors } from "@/components/analyze/CardConnectors";
 import { ControlBar } from "@/components/analyze/ControlBar";
 import { FaceMeshOverlay } from "@/components/analyze/FaceMeshOverlay";
-import { LiveFeed } from "@/components/analyze/LiveFeed";
 import { Button } from "@/components/ui/Button";
 import {
   COLLECTION_TIMEOUT_MS,
@@ -18,29 +18,17 @@ import {
   sampleProgressBucket,
   type AnalysisTrigger,
 } from "@/lib/analysis/sampling";
-import { formatProgress, getAnalysisProgress } from "@/lib/analysis/progress";
+import { getAnalysisProgress } from "@/lib/analysis/progress";
 import { captureVideoFrame, downloadElementScreenshot } from "@/lib/capture/screenshot";
 import { averageLandmarks, computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
-import { setMuted as setGlobalMuted, playSfx } from "@/lib/sound/sfx";
+import { setMuted as setGlobalMuted } from "@/lib/sound/sfx";
 import { getClientSessionId, logClientEvent } from "@/lib/telemetry/client";
 import { useAnalysisStream } from "@/hooks/useAnalysisStream";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceLandmarker } from "@/hooks/useFaceLandmarker";
 import type { Gender, Landmark, ReportSections } from "@/types/analysis";
 
-const SECTION_ORDER = [
-  "meta",
-  "geometry",
-  "forehead",
-  "eyes",
-  "nose",
-  "mouth",
-  "jaw",
-  "skin",
-  "scores",
-  "impression",
-  "conclusion",
-] as const;
+const CARD_REVEAL_INTERVAL_MS = 5200;
 
 export default function AnalyzePage() {
   return (
@@ -74,9 +62,8 @@ function AnalyzeClient() {
   const reportIdRef = useRef<string | null>(null);
   const sampleRef = useRef<Landmark[][]>([]);
   const [sampleCount, setSampleCount] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(0);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [liveComments, setLiveComments] = useState<string[]>([]);
   const [faceWarning, setFaceWarning] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const { videoRef, status, error, start } = useCamera({ persistGlobal: true });
@@ -215,13 +202,6 @@ function AnalyzeClient() {
     return () => window.clearInterval(interval);
   }, [beginAnalysis, logEvent, status]);
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setVisibleCount((count) => Math.min(SECTION_ORDER.length, count + 1));
-    }, 1150);
-    return () => window.clearInterval(interval);
-  }, []);
-
   const progress = useMemo(
     () =>
       getAnalysisProgress({
@@ -232,62 +212,34 @@ function AnalyzeClient() {
         rawChars: state.raw.length,
         hasReportId: Boolean(state.reportId),
         isComplete: state.isComplete,
-        liveCommentCount: liveComments.length,
       }),
-    [isLoading, liveComments.length, sampleCount, state.isComplete, state.raw.length, state.reportId, status],
+    [isLoading, sampleCount, state.isComplete, state.raw.length, state.reportId, status],
   );
-  const cards = useMemo(() => buildCards(state.sections, progress.percent), [progress.percent, state.sections]);
+  const cards = useMemo(() => buildCards(state.sections), [state.sections]);
 
-  const requestLiveComment = useCallback(async () => {
-    if (!gender || !state.reportId || !videoRef.current) return null;
-    logEvent("live_comment_client_request_started", { count: liveComments.length + 1 }, state.reportId);
-    const imageBase64 = captureVideoFrame(videoRef.current, 640, 360, 0.72);
-    const response = await fetch("/api/live-comment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reportId: state.reportId, gender, imageBase64, clientSessionId: getClientSessionId() }),
-    });
-    if (!response.ok) {
-      logEvent("live_comment_client_request_failed", { status: response.status }, state.reportId, "warn");
-      return null;
+  useEffect(() => {
+    if (!state.sections) {
+      setActiveCardIndex(0);
+      return;
     }
-    const data = (await response.json()) as { comment: string };
-    logEvent("live_comment_client_received", { chars: data.comment.length }, state.reportId);
-    return data.comment;
-  }, [gender, liveComments.length, logEvent, state.reportId, videoRef]);
 
-  useEffect(() => {
-    if (!state.isComplete || liveComments.length >= 5) return;
-    const delay = liveComments.length === 0 ? 900 : 6500;
-    const timer = window.setTimeout(() => {
-      requestLiveComment()
-        .then((comment) => {
-          if (!comment) return;
-          playSfx("live_ping");
-          setLiveComments((current) => [...current, comment]);
-        })
-        .catch(() => undefined);
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [liveComments.length, requestLiveComment, state.isComplete]);
-
-  useEffect(() => {
-    if (!state.reportId || liveComments.length < 5) return;
-    const timer = window.setTimeout(() => {
-      logEvent("result_redirect_started", { liveCommentCount: liveComments.length }, state.reportId);
-      router.push(`/result/${state.reportId}`);
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [liveComments.length, logEvent, router, state.reportId]);
+    setActiveCardIndex(0);
+    const interval = window.setInterval(() => {
+      setActiveCardIndex((index) => Math.min(cards.length - 1, index + 1));
+    }, CARD_REVEAL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [cards.length, state.reportId, state.sections]);
 
   const isFatal = status === "denied" || status === "error" || Boolean(state.error) || Boolean(clientError);
-  const progressMessage = formatProgress(progress);
+  const visibleCards = state.sections ? cards.slice(0, activeCardIndex + 1) : [];
+  const connectorCards = visibleCards.map((card, index) => ({ key: card.key, index, active: index === activeCardIndex }));
 
   return (
     <main ref={rootRef} className="relative h-screen overflow-hidden bg-black">
       <video ref={videoRef} className="absolute inset-0 h-full w-full scale-x-[-1] object-cover opacity-85" muted playsInline />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_44%,transparent_0,transparent_22%,rgb(0_0_0_/_0.32)_62%,rgb(0_0_0_/_0.72)_100%)]" />
       <FaceMeshOverlay result={result} />
+      <CardConnectors connectors={connectorCards} />
       <ControlBar
         muted={muted}
         onMutedChange={(next) => {
@@ -310,34 +262,39 @@ function AnalyzeClient() {
         </div>
       )}
 
-      {cards.slice(0, visibleCount).map((card, index) => {
+      {!isFatal && !state.sections && (
+        <AnalysisStatusPanel percent={progress.percent} label={progress.label} text="현재 촬영 프레임과 얼굴 랜드마크를 기준으로 분석 파이프라인을 진행 중입니다." />
+      )}
+
+      {!isFatal && state.sections && <AnalysisNotice confidence={state.sections.meta.confidence} text={state.sections.meta.complianceText} />}
+
+      {visibleCards.map((card, index) => {
         const isConclusion = card.key === "conclusion";
-        const side = index % 2 === 0 ? "left-7" : "right-7";
-        const top = 92 + Math.floor(index / 2) * 150;
+        const isExpanded = index === activeCardIndex;
+        const placement = getCardPlacement(index, isConclusion);
         return (
           <div
             key={card.key}
-            className={`fixed z-20 ${isConclusion ? "left-1/2 top-1/2 w-[min(760px,58vw)] -translate-x-1/2 -translate-y-1/2" : `${side} w-[min(390px,25vw)]`}`}
-            style={isConclusion ? undefined : { top }}
+            className={`fixed z-20 ${placement.className}`}
+            style={placement.style}
           >
-            <AnalysisCard title={card.title} text={card.text} tone={isConclusion ? "verdict" : "clinical"} isStreaming={state.isStreaming && index === visibleCount - 1} />
+            <AnalysisCard
+              title={card.title}
+              text={card.text}
+              tone={isConclusion ? "verdict" : "clinical"}
+              expanded={isExpanded}
+              className={isConclusion ? "border-accent-bad/35" : ""}
+              action={
+                isConclusion && state.reportId ? (
+                  <Button className="w-full justify-center" icon={<ArrowRight className="h-4 w-4" />} onClick={() => router.push(`/result/${state.reportId}`)}>
+                    결과 페이지로 이동
+                  </Button>
+                ) : null
+              }
+            />
           </div>
         );
       })}
-
-      <LiveFeed comments={liveComments} />
-
-      {!isFatal && (
-        <div className="fixed bottom-8 left-7 z-20 w-[min(360px,calc(100vw-3.5rem))] rounded-lg border border-border bg-black/45 px-4 py-3 text-sm font-semibold text-text-muted backdrop-blur">
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-info" />
-            <span>{progressMessage}</span>
-          </div>
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-accent-info transition-[width] duration-500 ease-out" style={{ width: `${progress.percent}%` }} />
-          </div>
-        </div>
-      )}
 
       {isFatal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/78">
@@ -355,14 +312,53 @@ function AnalyzeClient() {
   );
 }
 
-function buildCards(sections: ReportSections | null, progressPercent: number) {
-  const streamText = `${progressPercent}% 분석 파이프라인 진행 중입니다.`;
+function AnalysisStatusPanel({ percent, label, text }: { percent: number; label: string; text: string }) {
+  return (
+    <div className="fixed bottom-8 left-7 z-20 w-[min(390px,calc(100vw-3.5rem))] rounded-xl border border-border bg-black/50 px-4 py-4 text-sm font-semibold text-text-muted shadow-2xl shadow-black/30 backdrop-blur">
+      <div className="mb-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-info" />
+          <span>{label}</span>
+        </div>
+        <span className="text-2xl font-black tabular-nums text-text-primary">{percent}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-accent-info transition-[width] duration-500 ease-out" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-3 text-xs font-medium leading-5 text-text-faint">{text}</p>
+    </div>
+  );
+}
+
+function AnalysisNotice({ confidence, text }: { confidence: number; text: string }) {
+  return (
+    <div className="fixed bottom-8 left-7 z-20 flex w-[min(460px,calc(100vw-3.5rem))] items-start gap-3 rounded-xl border border-border bg-black/38 px-4 py-3 text-xs font-medium leading-5 text-text-faint backdrop-blur">
+      <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent-info" />
+      <p>
+        신뢰도 {confidence}%.<br />
+        {text}
+      </p>
+    </div>
+  );
+}
+
+function getCardPlacement(index: number, isConclusion: boolean): { className: string; style?: React.CSSProperties } {
+  if (isConclusion) {
+    return {
+      className: "left-1/2 bottom-8 w-[min(920px,68vw)] -translate-x-1/2",
+    };
+  }
+
+  const side = index % 2 === 0 ? "left-7" : "right-7";
+  const top = 92 + Math.floor(index / 2) * 78;
+  return {
+    className: `${side} w-[min(420px,26vw)]`,
+    style: { top },
+  };
+}
+
+function buildCards(sections: ReportSections | null) {
   const cards = [
-    {
-      key: "meta",
-      title: "§0 ANALYSIS METADATA",
-      text: sections ? `REPORT #${sections.meta.reportId}. Confidence ${sections.meta.confidence}%. ${sections.meta.complianceText}` : streamText,
-    },
     { key: "geometry", title: "§1 FACIAL GEOMETRY", text: sections ? Object.values(sections.geometry).join(" ") : "안면 대칭, 황금비, 삼정/오관 비율을 산출 중입니다." },
     { key: "forehead", title: "§2 FOREHEAD", text: sections ? `${sections.parts.forehead.metricsText} ${sections.parts.forehead.comment}` : "이마 면적과 미간, 헤어라인 비율을 추적 중입니다." },
     { key: "eyes", title: "§2 EYES", text: sections ? `${sections.parts.eyes.metricsText} ${sections.parts.eyes.comment}` : "좌우 눈 크기 차이와 눈꼬리 각도를 비교 중입니다." },

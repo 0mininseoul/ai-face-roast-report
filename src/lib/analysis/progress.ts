@@ -8,7 +8,6 @@ interface AnalysisProgressInput {
   rawChars: number;
   hasReportId: boolean;
   isComplete: boolean;
-  liveCommentCount: number;
 }
 
 export interface AnalysisProgress {
@@ -17,15 +16,13 @@ export interface AnalysisProgress {
 }
 
 const ESTIMATED_REPORT_CHARS = 5200;
-const TARGET_LIVE_COMMENT_COUNT = 5;
-
 export function getAnalysisProgress(input: AnalysisProgressInput): AnalysisProgress {
   if (input.cameraStatus !== "ready") {
     return { percent: 8, label: "카메라 초기화" };
   }
 
   if (input.isModelLoading) {
-    return { percent: 18, label: "MediaPipe 모델 로딩" };
+    return { percent: 18, label: "얼굴 인식 모델 로딩" };
   }
 
   if (!input.hasStarted) {
@@ -39,15 +36,10 @@ export function getAnalysisProgress(input: AnalysisProgressInput): AnalysisProgr
 
   if (!input.isComplete) {
     const streamRatio = clamp(input.rawChars / ESTIMATED_REPORT_CHARS, 0, 1);
-    return { percent: Math.round(58 + streamRatio * 30), label: "Gemini 분석 응답 수신" };
+    return { percent: Math.round(58 + streamRatio * 34), label: "AI 분석 응답 수신" };
   }
 
-  if (input.liveCommentCount < TARGET_LIVE_COMMENT_COUNT) {
-    const commentRatio = clamp(input.liveCommentCount / TARGET_LIVE_COMMENT_COUNT, 0, 1);
-    return { percent: Math.round(90 + commentRatio * 8), label: "실시간 코멘트 생성" };
-  }
-
-  return { percent: 100, label: "결과 페이지 이동" };
+  return { percent: 100, label: "최종 결론 확인" };
 }
 
 export function formatProgress(progress: AnalysisProgress): string {

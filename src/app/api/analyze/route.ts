@@ -3,6 +3,8 @@ import { getGenAi, MODEL_ANALYSIS } from "@/lib/gemini/client";
 import { buildAnalyzeUserPrompt } from "@/lib/gemini/promptText";
 import { readAnalyzeSystemPrompt } from "@/lib/gemini/prompts";
 import { normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
+import { pickMainCopy } from "@/lib/copy/mainCopy";
+import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
@@ -154,7 +156,7 @@ export async function POST(req: NextRequest) {
 
         const ai = getGenAi();
         const systemInstruction = await readAnalyzeSystemPrompt();
-        await record("analysis_gemini_stream_started", {
+        await record("analysis_ai_stream_started", {
           model: MODEL_ANALYSIS,
           promptChars: systemInstruction.length,
         });
@@ -185,16 +187,17 @@ export async function POST(req: NextRequest) {
           raw += text;
           chunkCount += 1;
           send({ type: "chunk", text });
-          void record("analysis_gemini_chunk", { chunkCount, chunkChars: text.length, totalChars: raw.length }, "debug");
+          void record("analysis_ai_chunk", { chunkCount, chunkChars: text.length, totalChars: raw.length }, "debug");
         }
 
-        const sections = parseReport(raw);
+        const sections = postprocessReportSections(parseReport(raw));
+        const mainCopy = pickMainCopy(body.gender, reportId);
         await supabase
           .from("face_reports")
           .update({
             status: "complete",
             report_sections_json: sections,
-            main_copy: sections.mainCopy,
+            main_copy: mainCopy,
           })
           .eq("id", reportId);
 

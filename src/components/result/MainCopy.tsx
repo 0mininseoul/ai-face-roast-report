@@ -1,7 +1,7 @@
 export function MainCopy({ text }: { text: string }) {
   return (
-    <section className="mx-auto max-w-6xl px-8 pb-12 pt-20 text-center">
-      <h1 className="text-balance text-[clamp(48px,6vw,92px)] font-black leading-[0.98] tracking-normal text-text-primary">
+    <section className="mx-auto max-w-[1500px] px-8 pb-12 pt-16 text-center">
+      <h1 className="mx-auto max-w-[1280px] text-balance text-[clamp(38px,4.8vw,76px)] font-black leading-[1.04] tracking-normal text-text-primary">
         {text}
       </h1>
     </section>
