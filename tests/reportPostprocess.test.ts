@@ -12,6 +12,24 @@ describe("postprocessReportSections", () => {
     const sections = makeSections({ conclusion: "최종 결론은 처참하다 ㅋㅋ 답이 없다." });
     expect(postprocessReportSections(sections).conclusion).toBe("최종 결론은 처참하다 ㅋㅋ 답이 없다.");
   });
+
+  it("removes service storage mentions from generated report copy", () => {
+    const sections = makeSections({
+      conclusion: "니 와꾸 분석 데이터를 서버에 저장하는 것 자체가 자원 낭비다 ㅋㅋ. 그래도 결론은 처참하다.",
+      geometry: {
+        asymmetry: "서버에 저장된 데이터 기준으로 비대칭이 나쁘다.",
+        phi: "황금비가 낮다.",
+        thirds: "삼정이 흔들린다.",
+        fifths: "오관이 어색하다.",
+        faceAspect: "안면비가 답답하다.",
+      },
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.conclusion).not.toContain("서버");
+    expect(processed.conclusion).not.toContain("저장");
+    expect(processed.geometry.asymmetry).not.toContain("서버");
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

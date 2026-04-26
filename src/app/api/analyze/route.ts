@@ -244,7 +244,7 @@ async function streamAnalysisWithRetry({
       if (attempt > 0) {
         send({
           type: "status",
-          message: `AI 분석 서버가 혼잡해 재시도 중입니다 (${attempt + 1}/${maxAttempts})`,
+          message: `AI 분석 응답이 지연되어 재시도 중입니다 (${attempt + 1}/${maxAttempts})`,
           attempt: attempt + 1,
           maxAttempts,
         });
@@ -274,7 +274,7 @@ async function streamAnalysisWithRetry({
       const delayMs = withJitter(ANALYSIS_RETRY_DELAYS_MS[attempt]!);
       send({
         type: "status",
-        message: `AI 분석 서버가 혼잡해 ${Math.ceil(delayMs / 1000)}초 뒤 자동 재시도합니다 (${attempt + 2}/${maxAttempts})`,
+        message: `AI 분석 응답이 지연되어 ${Math.ceil(delayMs / 1000)}초 뒤 자동 재시도합니다 (${attempt + 2}/${maxAttempts})`,
         attempt: attempt + 2,
         maxAttempts,
       });
