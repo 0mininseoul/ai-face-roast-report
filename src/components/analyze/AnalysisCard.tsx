@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CheckCircle2 } from "lucide-react";
+import { Activity, ChevronDown } from "lucide-react";
 import { playSfx } from "@/lib/sound/sfx";
 
 export function AnalysisCard({
@@ -14,6 +14,8 @@ export function AnalysisCard({
   progressPercent,
   progressLabel,
   action,
+  children,
+  onToggle,
   className = "",
 }: {
   title: string;
@@ -24,6 +26,8 @@ export function AnalysisCard({
   progressPercent?: number;
   progressLabel?: string;
   action?: React.ReactNode;
+  children?: React.ReactNode;
+  onToggle?: () => void;
   className?: string;
 }) {
   const [visible, setVisible] = useState("");
@@ -56,27 +60,38 @@ export function AnalysisCard({
     <motion.article
       layout
       initial={{ opacity: 0, y: 18, scale: 0.96 }}
-      animate={{ opacity: expanded ? 1 : 0.62, y: 0, scale: expanded ? 1 : 0.94 }}
+      animate={{ opacity: expanded ? 1 : 0.78, y: 0, scale: expanded ? 1 : 0.97 }}
       transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-      className={`glass-panel overflow-hidden rounded-xl ${expanded ? "p-4 shadow-2xl shadow-black/30" : "p-3"} ${className}`}
+      className={`glass-panel relative overflow-hidden rounded-xl ${expanded ? "p-4 shadow-2xl shadow-black/35" : "p-3"} ${className}`}
     >
-      <div className="mb-3 flex items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className={`h-6 w-1 rounded-full ${accent}`} />
-          <h2 className="truncate text-xs font-bold uppercase tracking-[0.12em] text-text-muted">{title}</h2>
-        </div>
-        {expanded && isStreaming ? <Activity className="h-4 w-4 shrink-0 animate-pulse text-accent-info" /> : !expanded ? <CheckCircle2 className="h-4 w-4 shrink-0 text-text-faint" /> : null}
-      </div>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-px rounded-[11px] border border-white/10 bg-[linear-gradient(115deg,rgb(255_255_255_/_0.18),transparent_30%,rgb(125_216_255_/_0.08)_58%,transparent_82%)] opacity-80"
+      />
+      <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-white/45" />
+      <button type="button" className={`relative z-10 flex w-full items-center justify-between gap-4 text-left ${expanded ? "mb-3" : ""}`} onClick={onToggle} aria-expanded={expanded}>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className={`h-6 w-1 shrink-0 rounded-full ${accent}`} />
+          <span className="truncate text-xs font-bold uppercase tracking-[0.12em] text-text-muted">{title}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {expanded && isStreaming && <Activity className="h-4 w-4 animate-pulse text-accent-info" />}
+          <ChevronDown className={`h-4 w-4 text-text-faint transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
+        </span>
+      </button>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
             key="expanded"
+            className="relative z-10"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.28, ease: "easeOut" }}
           >
-            {isProgress ? (
+            {children ? (
+              children
+            ) : isProgress ? (
               <div>
                 <div className="mb-2 flex items-end justify-between gap-4">
                   <p className="text-sm font-medium leading-6 text-text-primary">{progressLabel ?? visible}</p>
@@ -87,7 +102,7 @@ export function AnalysisCard({
                 </div>
               </div>
             ) : (
-              <p className={`${tone === "verdict" ? "max-h-[24vh] text-base leading-7" : "max-h-[22vh] text-sm leading-6"} overflow-y-auto pr-1 font-medium text-text-primary`}>{visible}</p>
+              <p className={`${tone === "verdict" ? "max-h-[28vh] text-base leading-7" : "max-h-[96px] text-sm leading-6"} overflow-y-auto pr-1 font-medium text-text-primary`}>{visible}</p>
             )}
             {action && <div className="mt-5">{action}</div>}
           </motion.div>

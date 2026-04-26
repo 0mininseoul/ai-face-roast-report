@@ -28,7 +28,8 @@ import { useCamera } from "@/hooks/useCamera";
 import { useFaceLandmarker } from "@/hooks/useFaceLandmarker";
 import type { Gender, Landmark, ReportSections } from "@/types/analysis";
 
-const CARD_REVEAL_INTERVAL_MS = 5200;
+const LOADING_CARD_REVEAL_INTERVAL_MS = 1450;
+const RESULT_CARD_REVEAL_INTERVAL_MS = 2600;
 
 export default function AnalyzePage() {
   return (
@@ -62,7 +63,10 @@ function AnalyzeClient() {
   const reportIdRef = useRef<string | null>(null);
   const sampleRef = useRef<Landmark[][]>([]);
   const [sampleCount, setSampleCount] = useState(0);
-  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [loadingRevealCount, setLoadingRevealCount] = useState(1);
+  const [completedRevealCount, setCompletedRevealCount] = useState(0);
+  const [manualExpandedKeys, setManualExpandedKeys] = useState<Set<string>>(() => new Set());
+  const [manualCollapsedKeys, setManualCollapsedKeys] = useState<Set<string>>(() => new Set());
   const [muted, setMuted] = useState(false);
   const [faceWarning, setFaceWarning] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
@@ -216,23 +220,76 @@ function AnalyzeClient() {
     [isLoading, sampleCount, state.isComplete, state.raw.length, state.reportId, status],
   );
   const cards = useMemo(() => buildCards(state.sections), [state.sections]);
+  const loadingCards = useMemo(() => buildCards(null), []);
 
   useEffect(() => {
-    if (!state.sections) {
-      setActiveCardIndex(0);
-      return;
-    }
+    setManualExpandedKeys(new Set());
+    setManualCollapsedKeys(new Set());
+  }, [state.reportId]);
 
-    setActiveCardIndex(0);
+  useEffect(() => {
+    if (state.sections) return;
+    setCompletedRevealCount(0);
+    setLoadingRevealCount(1);
     const interval = window.setInterval(() => {
-      setActiveCardIndex((index) => Math.min(cards.length - 1, index + 1));
-    }, CARD_REVEAL_INTERVAL_MS);
+      setLoadingRevealCount((count) => Math.min(loadingCards.length, count + 1));
+    }, LOADING_CARD_REVEAL_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [loadingCards.length, state.reportId, state.sections]);
+
+  useEffect(() => {
+    if (!state.sections) return;
+    setCompletedRevealCount(1);
+    const interval = window.setInterval(() => {
+      setCompletedRevealCount((count) => Math.min(cards.length, count + 1));
+    }, RESULT_CARD_REVEAL_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [cards.length, state.reportId, state.sections]);
 
   const isFatal = status === "denied" || status === "error" || Boolean(state.error) || Boolean(clientError);
-  const visibleCards = state.sections ? cards.slice(0, activeCardIndex + 1) : [];
-  const connectorCards = visibleCards.map((card, index) => ({ key: card.key, index, active: index === activeCardIndex }));
+  const visibleCount = state.sections
+    ? Math.min(cards.length, Math.max(Math.min(loadingRevealCount, cards.length - 1), completedRevealCount))
+    : Math.min(loadingCards.length, loadingRevealCount);
+  const visibleCards = cards.slice(0, visibleCount);
+  const defaultExpandedKeys = useMemo(() => {
+    const keys = new Set<string>();
+    visibleCards.forEach((card, index) => {
+      if (card.key === "conclusion") {
+        keys.add(card.key);
+        return;
+      }
+
+      const hasLaterOnSameSide = visibleCards.some((laterCard, laterIndex) => laterIndex > index && laterCard.key !== "conclusion" && laterIndex % 2 === index % 2);
+      if (!hasLaterOnSameSide) keys.add(card.key);
+    });
+    return keys;
+  }, [visibleCards]);
+  const expandedCardKeys = useMemo(() => {
+    const keys = new Set<string>();
+    visibleCards.forEach((card) => {
+      if (manualExpandedKeys.has(card.key) || (defaultExpandedKeys.has(card.key) && !manualCollapsedKeys.has(card.key))) keys.add(card.key);
+    });
+    return keys;
+  }, [defaultExpandedKeys, manualCollapsedKeys, manualExpandedKeys, visibleCards]);
+  const handleToggleCard = useCallback((key: string, isExpanded: boolean) => {
+    if (isExpanded) {
+      setManualCollapsedKeys((previous) => new Set(previous).add(key));
+      setManualExpandedKeys((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        return next;
+      });
+      return;
+    }
+
+    setManualExpandedKeys((previous) => new Set(previous).add(key));
+    setManualCollapsedKeys((previous) => {
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
+  }, []);
+  const connectorCards = visibleCards.map((card, index) => ({ key: card.key, index, active: expandedCardKeys.has(card.key) }));
 
   return (
     <main ref={rootRef} className="relative h-screen overflow-hidden bg-black">
@@ -266,11 +323,13 @@ function AnalyzeClient() {
         <AnalysisStatusPanel percent={progress.percent} label={progress.label} text="현재 촬영 프레임과 얼굴 랜드마크를 기준으로 분석 파이프라인을 진행 중입니다." />
       )}
 
-      {!isFatal && state.sections && <AnalysisNotice confidence={state.sections.meta.confidence} text={state.sections.meta.complianceText} />}
+      {!isFatal && state.sections && <AnalysisNotice text={state.sections.meta.complianceText} />}
 
       {visibleCards.map((card, index) => {
         const isConclusion = card.key === "conclusion";
-        const isExpanded = index === activeCardIndex;
+        const isExpanded = expandedCardKeys.has(card.key);
+        const isCompletedCard = Boolean(state.sections && index < completedRevealCount);
+        const loadingCard = loadingCards[index];
         const placement = getCardPlacement(index, isConclusion);
         return (
           <div
@@ -280,10 +339,14 @@ function AnalyzeClient() {
           >
             <AnalysisCard
               title={card.title}
-              text={card.text}
+              text={isCompletedCard ? card.text : loadingCard?.text ?? "분석 대기 중입니다."}
               tone={isConclusion ? "verdict" : "clinical"}
+              isStreaming={!isCompletedCard}
               expanded={isExpanded}
+              progressPercent={!isCompletedCard ? getCardProgress(progress.percent, index) : undefined}
+              progressLabel={!isCompletedCard ? loadingCard?.text : undefined}
               className={isConclusion ? "border-accent-bad/35" : ""}
+              onToggle={() => handleToggleCard(card.key, isExpanded)}
               action={
                 isConclusion && state.reportId ? (
                   <Button className="w-full justify-center" icon={<ArrowRight className="h-4 w-4" />} onClick={() => router.push(`/result/${state.reportId}`)}>
@@ -291,7 +354,9 @@ function AnalyzeClient() {
                   </Button>
                 ) : null
               }
-            />
+            >
+              {isCompletedCard && card.key === "scores" && state.sections ? <ScoreCardContent sections={state.sections} /> : null}
+            </AnalysisCard>
           </div>
         );
       })}
@@ -330,14 +395,11 @@ function AnalysisStatusPanel({ percent, label, text }: { percent: number; label:
   );
 }
 
-function AnalysisNotice({ confidence, text }: { confidence: number; text: string }) {
+function AnalysisNotice({ text }: { text: string }) {
   return (
     <div className="fixed bottom-8 left-7 z-20 flex w-[min(460px,calc(100vw-3.5rem))] items-start gap-3 rounded-xl border border-border bg-black/38 px-4 py-3 text-xs font-medium leading-5 text-text-faint backdrop-blur">
       <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent-info" />
-      <p>
-        신뢰도 {confidence}%.<br />
-        {text}
-      </p>
+      <p>{text}</p>
     </div>
   );
 }
@@ -350,11 +412,46 @@ function getCardPlacement(index: number, isConclusion: boolean): { className: st
   }
 
   const side = index % 2 === 0 ? "left-7" : "right-7";
-  const top = 92 + Math.floor(index / 2) * 78;
+  const top = 96 + Math.floor(index / 2) * 116;
   return {
-    className: `${side} w-[min(420px,26vw)]`,
+    className: `${side} w-[min(430px,27vw)]`,
     style: { top },
   };
+}
+
+function getCardProgress(globalPercent: number, index: number) {
+  const value = globalPercent - index * 4 + 8;
+  return Math.max(7, Math.min(96, value));
+}
+
+function ScoreCardContent({ sections }: { sections: ReportSections }) {
+  const rows = [
+    { label: "호감도", value: sections.scores.likability, comment: sections.scores.comments[0] },
+    { label: "신뢰도", value: sections.scores.trust, comment: sections.scores.comments[1] },
+    { label: "대칭성", value: sections.scores.symmetry, comment: sections.scores.comments[2] },
+    { label: "균형감", value: sections.scores.balance, comment: sections.scores.comments[3] },
+    { label: "매력도", value: sections.scores.attractiveness, comment: sections.scores.comments[4] },
+  ];
+
+  return (
+    <div className="max-h-[28vh] space-y-3 overflow-y-auto pr-1">
+      {rows.map((row) => {
+        const value = Math.max(0, Math.min(100, row.value));
+        return (
+          <div key={row.label} className="rounded-lg border border-white/10 bg-black/24 px-3 py-2.5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-black uppercase tracking-[0.12em] text-text-muted">{row.label}</span>
+              <span className="text-lg font-black tabular-nums text-text-primary">{Math.round(value)}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-accent-bad" style={{ width: `${value}%` }} />
+            </div>
+            {row.comment && <p className="mt-2 text-xs font-medium leading-5 text-text-muted">{row.comment}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function buildCards(sections: ReportSections | null) {
