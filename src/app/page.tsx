@@ -37,7 +37,7 @@ export default function EntryPage() {
         </div>
       </header>
 
-      <section className="fixed bottom-8 right-8 z-20 w-[min(520px,calc(100vw-4rem))]">
+      <section className="fixed bottom-8 right-8 z-20 max-h-[calc(100vh-7rem)] w-[min(520px,calc(100vw-4rem))] overflow-y-auto">
         <div className="glass-panel relative rounded-2xl p-5">
           <div className="mb-3 flex items-center justify-between px-1">
             <div className="flex items-center gap-2 text-sm font-semibold text-text-muted">
@@ -73,7 +73,7 @@ export default function EntryPage() {
           </div>
 
           <div className="mt-6 space-y-3">
-            <Consent checked={age} onChange={setAge} label="만 14세 이상입니다" />
+            <Consent checked={age} onChange={setAge} label="본인은 만 14세 이상이며 본인의 얼굴만 분석합니다" singleLine />
             <Consent checked={expires} onChange={setExpires} label="분석된 얼굴과 데이터는 24시간 뒤 삭제되어 더 이상 열람할 수 없습니다" />
             <Consent checked={lawsuit} onChange={setLawsuit} label="어떤 내용이 나오건 상처받지 않고 개발자를 고소하지 않겠습니다" />
           </div>
@@ -121,11 +121,11 @@ export default function EntryPage() {
   );
 }
 
-function Consent({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+function Consent({ checked, onChange, label, singleLine = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; singleLine?: boolean }) {
   return (
     <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-bg-card/70 p-4 text-sm text-text-muted transition hover:border-border-bright">
       <input className="mt-1 h-4 w-4 accent-[var(--accent-info)]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span className="font-medium leading-6">{label}</span>
+      <span className={`font-medium leading-6 ${singleLine ? "whitespace-nowrap" : ""}`}>{label}</span>
     </label>
   );
 }

@@ -23,12 +23,13 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
+  const shareImageUrl = `${baseUrl}/og-image.png`;
   const mainCopy = pickMainCopy(row.gender, row.id);
 
   return (
     <main className="min-h-screen">
       <StopCameraOnMount />
-      <ResultHeader mainCopy={mainCopy} faceImageUrl={faceUrl} resultUrl={resultUrl} />
+      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} />
       <MainCopy text={mainCopy} />
       <FaceImage src={faceUrl} createdAt={row.created_at} />
       <DetailedReport sections={sections} />

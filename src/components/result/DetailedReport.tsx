@@ -12,7 +12,7 @@ const PART_LABEL = {
 
 export function DetailedReport({ sections }: { sections: ReportSections }) {
   return (
-    <section className="mx-auto grid max-w-[1500px] grid-cols-2 gap-6 px-8 pb-24">
+    <section className="mx-auto grid max-w-[1500px] grid-cols-1 gap-4 px-4 pb-16 md:grid-cols-2 md:gap-6 md:px-8 md:pb-24">
       <Panel title="§ 1. 안면 기하학">
         <Text label="대칭" value={sections.geometry.asymmetry} />
         <Text label="황금비" value={sections.geometry.phi} />
@@ -63,8 +63,11 @@ export function DetailedReport({ sections }: { sections: ReportSections }) {
         <p className="whitespace-pre-line text-lg font-semibold leading-9 text-text-primary">{sections.conclusion}</p>
       </Panel>
 
-      <footer className="col-span-2 text-center text-xs leading-5 text-text-faint">
+      <footer className="text-center text-xs leading-5 text-text-faint md:col-span-2">
         <span className="block">본 보고서는 AI가 통계적, 기하학적 분석을 통해 생성한 결과이며, 오락적 목적으로만 사용되어야 합니다.</span>
+        <span className="block">본 분석은 오락적 목적으로 생성되었으며, 의학적 또는 심리학적 진단을 대체할 수 없습니다.</span>
+        <span className="block">결과는 인공지능 모델의 주관적 해석을 포함하며, 과학적 근거가 부족할 수 있습니다.</span>
+        <span className="block">AI가 생성한 풍자 표현이며 사실 판단이나 사실 진술이 아닙니다.</span>
         <span className="block">{sections.meta.complianceText}</span>
       </footer>
     </section>
@@ -73,7 +76,7 @@ export function DetailedReport({ sections }: { sections: ReportSections }) {
 
 function Panel({ title, children, wide }: { title: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <article className={`glass-panel rounded-2xl p-6 ${wide ? "col-span-2" : ""}`}>
+    <article className={`glass-panel rounded-2xl p-5 sm:p-6 ${wide ? "md:col-span-2" : ""}`}>
       <h2 className="mb-5 text-xs font-black uppercase tracking-[0.14em] text-text-muted">{title}</h2>
       {children}
     </article>

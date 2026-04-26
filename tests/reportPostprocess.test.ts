@@ -30,6 +30,25 @@ describe("postprocessReportSections", () => {
     expect(processed.conclusion).not.toContain("저장");
     expect(processed.geometry.asymmetry).not.toContain("서버");
   });
+
+  it("sanitizes sexual experience terms from generated report copy", () => {
+    const sections = makeSections({
+      conclusion: "분석 결과 보니까 왜 모쏠아다인지 알겠다 ㅋㅋ. 아다 티 내지 말고 거울부터 봐라.",
+      mainCopy: "성경험 없어 보이는 처녀 관상",
+      scores: {
+        likability: 1,
+        trust: 1,
+        symmetry: 1,
+        balance: 1,
+        attractiveness: 1,
+        comments: ["동정남 느낌", "", "", "", ""],
+      },
+    });
+
+    const processed = postprocessReportSections(sections);
+    const text = [processed.conclusion, processed.mainCopy, ...processed.scores.comments].join(" ");
+    expect(text).not.toMatch(/모쏠아다|아다|처녀|동정|성경험/);
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

@@ -9,6 +9,7 @@ export function middleware(req: NextRequest) {
     path.startsWith("/mobile-only") ||
     path.startsWith("/terms") ||
     path.startsWith("/privacy") ||
+    path.startsWith("/result") ||
     path.startsWith("/api") ||
     path.startsWith("/_next") ||
     path.startsWith("/fonts") ||

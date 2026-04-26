@@ -1,5 +1,16 @@
 import type { ReportSections } from "@/types/analysis";
 
+const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/모\s*쏠\s*아\s*다/gi, "연애 운까지 박살난 타입"],
+  [/(?<![가-힣])아\s*다(?:인|인지|라서|라니|야|냐|구나|네|임|입니다)?(?![가-힣])/gi, "사회성까지 박살난 타입"],
+  [/(?<![가-힣])처\s*녀(?:인|인지|라서|라니|야|냐|구나|네|임|입니다)?(?![가-힣])/gi, "사회성까지 박살난 타입"],
+  [/(?<![가-힣])동\s*정(?:남|녀|충)?(?:인|인지|라서|라니|야|냐|구나|네|임|입니다)?(?![가-힣])/gi, "사회성까지 박살난 타입"],
+  [/성\s*경\s*험/gi, "사생활"],
+  [/순\s*결/gi, "사생활"],
+  [/virginity/gi, "사생활"],
+  [/(?<![a-z])virgin(?![a-z])/gi, "사생활"],
+];
+
 export function postprocessReportSections(sections: ReportSections): ReportSections {
   const sanitized = sanitizeStorageMentions(sections);
   return {
@@ -61,9 +72,13 @@ function sanitizePart<T extends { metricsText: string; comment: string }>(part: 
 }
 
 export function sanitizeText(text: string): string {
-  return text
+  return sanitizeSensitiveSexualExperience(text)
     .replace(/[^.!?\n。]*?(?:서버|DB|데이터베이스|저장소)[^.!?\n。]*?(?:저장|보관|업로드|전송|남기|기록)[^.!?\n。]*[.!?。]?/gi, "")
     .replace(/[^.!?\n。]*?(?:저장|보관|업로드|전송|기록)[^.!?\n。]*?(?:서버|DB|데이터베이스|저장소)[^.!?\n。]*[.!?。]?/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function sanitizeSensitiveSexualExperience(text: string): string {
+  return SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text);
 }

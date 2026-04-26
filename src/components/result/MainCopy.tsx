@@ -37,7 +37,7 @@ export function MainCopy({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <section ref={containerRef} className="w-full px-[clamp(18px,3vw,56px)] pb-12 pt-16 text-center">
+    <section ref={containerRef} className="w-full px-[clamp(18px,3vw,56px)] pb-8 pt-10 text-center sm:pb-12 sm:pt-16">
       <h1 className="mx-auto w-full overflow-visible whitespace-nowrap text-center font-black leading-none tracking-normal text-text-primary">
         <span
           ref={textRef}
