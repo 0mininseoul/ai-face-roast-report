@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Copy, MessageCircle, RotateCcw } from "lucide-react";
+import { Clock3, Copy, MessageCircle, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
@@ -36,7 +36,7 @@ export function ResultHeader({
             onClick={() =>
               shareKakaoFeed({
                 title: mainCopy,
-                description: "AI 얼평보고서 - 이 페이지는 24시간 뒤 사라집니다.",
+                description: "AI 얼평보고서 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
                 imageUrl: faceImageUrl,
                 resultUrl,
               })
@@ -62,8 +62,11 @@ export function ResultHeader({
           </Link>
         </div>
       </div>
-      <div className="border-t border-border/70 px-8 py-2 text-center text-xs font-medium text-text-faint">
-        이 페이지는 생성 후 24시간 뒤 사라집니다.
+      <div className="border-t border-border/70 bg-black/24 px-8 py-3">
+        <div className="mx-auto flex w-fit items-center justify-center gap-2 rounded-full border border-accent-info/20 bg-accent-info/8 px-4 py-2 text-sm font-black text-text-primary shadow-[0_0_32px_rgb(125_216_255_/_0.08)]">
+          <Clock3 className="h-4 w-4 text-accent-info" />
+          <span>이 페이지는 생성 후 24시간 뒤 사라집니다.</span>
+        </div>
       </div>
     </header>
   );

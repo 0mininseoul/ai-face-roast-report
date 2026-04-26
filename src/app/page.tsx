@@ -15,13 +15,14 @@ export default function EntryPage() {
   const { videoRef, status, error, start, stop } = useCamera();
   const [gender, setGender] = useState<Gender | null>(null);
   const [age, setAge] = useState(false);
+  const [expires, setExpires] = useState(false);
   const [lawsuit, setLawsuit] = useState(false);
 
   useEffect(() => {
     void start();
   }, [start]);
 
-  const canStart = status === "ready" && gender && age && lawsuit;
+  const canStart = status === "ready" && gender && age && expires && lawsuit;
 
   return (
     <main className="relative h-screen overflow-hidden bg-black">
@@ -73,6 +74,7 @@ export default function EntryPage() {
 
           <div className="mt-6 space-y-3">
             <Consent checked={age} onChange={setAge} label="만 14세 이상입니다" />
+            <Consent checked={expires} onChange={setExpires} label="분석된 얼굴과 데이터는 24시간 뒤 삭제되어 더 이상 열람할 수 없습니다" />
             <Consent checked={lawsuit} onChange={setLawsuit} label="어떤 내용이 나오건 상처받지 않고 개발자를 고소하지 않겠습니다" />
           </div>
 
