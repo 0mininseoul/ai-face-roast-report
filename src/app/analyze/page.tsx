@@ -18,6 +18,7 @@ import {
   sampleProgressBucket,
   type AnalysisTrigger,
 } from "@/lib/analysis/sampling";
+import { formatProgress, getAnalysisProgress } from "@/lib/analysis/progress";
 import { captureVideoFrame, downloadElementScreenshot } from "@/lib/capture/screenshot";
 import { averageLandmarks, computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
 import { setMuted as setGlobalMuted, playSfx } from "@/lib/sound/sfx";
@@ -221,7 +222,21 @@ function AnalyzeClient() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const cards = useMemo(() => buildCards(state.sections, state.raw), [state.raw, state.sections]);
+  const progress = useMemo(
+    () =>
+      getAnalysisProgress({
+        cameraStatus: status,
+        isModelLoading: isLoading,
+        hasStarted: startedRef.current,
+        sampleCount,
+        rawChars: state.raw.length,
+        hasReportId: Boolean(state.reportId),
+        isComplete: state.isComplete,
+        liveCommentCount: liveComments.length,
+      }),
+    [isLoading, liveComments.length, sampleCount, state.isComplete, state.raw.length, state.reportId, status],
+  );
+  const cards = useMemo(() => buildCards(state.sections, progress.percent), [progress.percent, state.sections]);
 
   const requestLiveComment = useCallback(async () => {
     if (!gender || !state.reportId || !videoRef.current) return null;
@@ -266,12 +281,7 @@ function AnalyzeClient() {
   }, [liveComments.length, logEvent, router, state.reportId]);
 
   const isFatal = status === "denied" || status === "error" || Boolean(state.error) || Boolean(clientError);
-  const loadingMessage =
-    status !== "ready"
-      ? "카메라 초기화 중"
-      : isLoading
-        ? "MediaPipe 모델 로딩 중"
-        : `얼굴 안정 프레임 수집 중 ${Math.min(sampleCount, TARGET_SAMPLE_COUNT)}/${TARGET_SAMPLE_COUNT}`;
+  const progressMessage = formatProgress(progress);
 
   return (
     <main ref={rootRef} className="relative h-screen overflow-hidden bg-black">
@@ -317,10 +327,15 @@ function AnalyzeClient() {
 
       <LiveFeed comments={liveComments} />
 
-      {(status !== "ready" || isLoading || (!startedRef.current && !state.error)) && !isFatal && (
-        <div className="fixed bottom-8 left-7 z-20 flex items-center gap-3 rounded-lg border border-border bg-black/45 px-4 py-3 text-sm font-semibold text-text-muted backdrop-blur">
-          <Loader2 className="h-4 w-4 animate-spin text-accent-info" />
-          {loadingMessage}
+      {!isFatal && (
+        <div className="fixed bottom-8 left-7 z-20 w-[min(360px,calc(100vw-3.5rem))] rounded-lg border border-border bg-black/45 px-4 py-3 text-sm font-semibold text-text-muted backdrop-blur">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent-info" />
+            <span>{progressMessage}</span>
+          </div>
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-accent-info transition-[width] duration-500 ease-out" style={{ width: `${progress.percent}%` }} />
+          </div>
         </div>
       )}
 
@@ -340,8 +355,8 @@ function AnalyzeClient() {
   );
 }
 
-function buildCards(sections: ReportSections | null, raw: string) {
-  const streamText = raw ? `Gemini 응답 수신 중... ${raw.length.toLocaleString()} bytes 누적.` : "랜드마크 안정화 및 캡쳐 프레임을 기준으로 분석을 준비 중입니다.";
+function buildCards(sections: ReportSections | null, progressPercent: number) {
+  const streamText = `${progressPercent}% 분석 파이프라인 진행 중입니다.`;
   const cards = [
     {
       key: "meta",
