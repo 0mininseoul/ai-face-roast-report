@@ -1,21 +1,29 @@
 "use client";
 
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
+
+const CAPTURE_CLASS = "is-capturing";
 
 export async function downloadElementScreenshot(element: HTMLElement, filenamePrefix = "ai-얼평보고서") {
-  const cleanup = prepareVideoCanvases(element);
+  const cleanupVideo = prepareVideoCanvases(element);
+  document.documentElement.classList.add(CAPTURE_CLASS);
   try {
-    const canvas = await html2canvas(element, {
-      backgroundColor: null,
-      useCORS: true,
-      scale: Math.min(window.devicePixelRatio || 1, 2),
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const dataUrl = await toPng(element, {
+      pixelRatio,
+      backgroundColor: "#000000",
+      filter: (node) => node.dataset?.capture !== "hide",
+      imagePlaceholder:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+      fetchRequestInit: { cache: "force-cache" },
     });
     const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
+    link.href = dataUrl;
     link.download = `${filenamePrefix}-${Date.now()}.png`;
     link.click();
   } finally {
-    cleanup();
+    document.documentElement.classList.remove(CAPTURE_CLASS);
+    cleanupVideo();
   }
 }
 
@@ -33,43 +41,53 @@ export function captureVideoFrame(video: HTMLVideoElement, width = 1280, height 
 
 function prepareVideoCanvases(root: HTMLElement): () => void {
   const scale = Math.min(window.devicePixelRatio || 1, 2);
-  const replacements: Array<{ video: HTMLVideoElement; canvas: HTMLCanvasElement; visibility: string }> = [];
+  const replacements: Array<{ video: HTMLVideoElement; canvas: HTMLCanvasElement; nextSibling: ChildNode | null; parent: HTMLElement }> = [];
 
   root.querySelectorAll("video").forEach((video) => {
-    if (!video.videoWidth || !video.videoHeight || !video.parentElement) return;
-
+    if (!video.parentElement) return;
+    const parent = video.parentElement;
     const rect = video.getBoundingClientRect();
-    const parentRect = video.parentElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
+    const parentRect = parent.getBoundingClientRect();
     const computed = window.getComputedStyle(video);
+
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(rect.width * scale);
-    canvas.height = Math.round(rect.height * scale);
-    canvas.style.position = "absolute";
+    const drawWidth = Math.max(1, Math.round(rect.width));
+    const drawHeight = Math.max(1, Math.round(rect.height));
+    canvas.width = Math.round(drawWidth * scale);
+    canvas.height = Math.round(drawHeight * scale);
+
+    for (const cls of Array.from(video.classList)) canvas.classList.add(cls);
+    canvas.style.position = computed.position === "static" ? "absolute" : computed.position;
     canvas.style.left = `${rect.left - parentRect.left}px`;
     canvas.style.top = `${rect.top - parentRect.top}px`;
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    canvas.style.width = `${drawWidth}px`;
+    canvas.style.height = `${drawHeight}px`;
     canvas.style.opacity = computed.opacity;
     canvas.style.borderRadius = computed.borderRadius;
     canvas.style.pointerEvents = "none";
     canvas.style.zIndex = computed.zIndex === "auto" ? "0" : computed.zIndex;
+    canvas.style.transform = "none";
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(scale, scale);
-    drawVideoCover(ctx, video, rect.width, rect.height, isVideoMirrored(video, computed));
+    const hasFrame = video.videoWidth > 0 && video.videoHeight > 0;
+    if (ctx && hasFrame) {
+      ctx.scale(scale, scale);
+      drawVideoCover(ctx, video, drawWidth, drawHeight, isVideoMirrored(video, computed));
+    } else if (ctx) {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
-    replacements.push({ video, canvas, visibility: video.style.visibility });
-    video.parentElement.appendChild(canvas);
-    video.style.visibility = "hidden";
+    replacements.push({ video, canvas, nextSibling: video.nextSibling, parent });
+    parent.replaceChild(canvas, video);
   });
 
   return () => {
-    replacements.forEach(({ video, canvas, visibility }) => {
-      video.style.visibility = visibility;
-      canvas.remove();
+    replacements.forEach(({ video, canvas, nextSibling, parent }) => {
+      if (canvas.parentElement === parent) {
+        parent.insertBefore(video, nextSibling);
+        canvas.remove();
+      }
     });
   };
 }

@@ -18,7 +18,7 @@
     "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.23.24",
     "howler": "^2.2.4",
-    "html2canvas": "^1.4.1",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.552.0",
     "next": "14.2.35",
     "react": "^18.3.1",
