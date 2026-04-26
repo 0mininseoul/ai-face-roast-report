@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Pretendard";
+  font-weight: 45 920;
+  font-display: swap;
+  font-style: normal;
+  src: url("/fonts/PretendardVariable.woff2") format("woff2-variations");
+}
+
+:root {
+  --bg-primary: #08090d;
+  --bg-card: #12141b;
+  --bg-card-hover: #191c26;
+  --bg-raised: #20242f;
+  --border: #2a2f3d;
+  --border-bright: #445064;
+  --text-primary: #f5f7fb;
+  --text-muted: #a0a8b8;
+  --text-faint: #5a6272;
+  --accent-info: #7dd8ff;
+  --accent-warn: #ffd27d;
+  --accent-bad: #ff5a6e;
+  --accent-ok: #86efac;
+  --gauge-track: #262b38;
+}
+
+html,
+body {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 50% -20%, rgb(125 216 255 / 0.12), transparent 34rem),
+    linear-gradient(180deg, #0b0d13 0%, var(--bg-primary) 48%, #050609 100%);
+  color: var(--text-primary);
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-feature-settings: "ss03";
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: rgb(125 216 255 / 0.26);
+}
+
+button,
+a,
+input,
+label {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.glass-panel {
+  border: 1px solid rgb(255 255 255 / 0.08);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.025)),
+    rgb(14 16 23 / 0.76);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.38), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  backdrop-filter: blur(22px) saturate(1.2);
+}
+
+.scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.035) 0,
+    rgb(255 255 255 / 0.035) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  mix-blend-mode: screen;
+  opacity: 0.23;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

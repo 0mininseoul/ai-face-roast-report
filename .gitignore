@@ -1,0 +1,16 @@
+.DS_Store
+node_modules
+.next
+out
+coverage
+.env
+.env.local
+.env*.local
+.vercel
+.playwright-cli
+.claude
+supabase/.temp
+.vscode
+*.tsbuildinfo
+playwright-report
+test-results
