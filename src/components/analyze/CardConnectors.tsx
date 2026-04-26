@@ -28,10 +28,17 @@ export function CardConnectors({ connectors }: { connectors: CardConnector[] }) 
   return (
     <svg className="pointer-events-none fixed inset-0 z-[15] h-screen w-screen" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       <defs>
+        <filter id="connectorGlow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="0.55" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
         <linearGradient id="connectorActive" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stopColor="rgba(125,216,255,0.05)" />
-          <stop offset="65%" stopColor="rgba(125,216,255,0.7)" />
-          <stop offset="100%" stopColor="rgba(245,247,251,0.85)" />
+          <stop offset="0%" stopColor="rgba(125,216,255,0.38)" />
+          <stop offset="65%" stopColor="rgba(125,216,255,0.92)" />
+          <stop offset="100%" stopColor="rgba(245,247,251,1)" />
         </linearGradient>
       </defs>
       {connectors.map((connector) => {
@@ -39,20 +46,30 @@ export function CardConnectors({ connectors }: { connectors: CardConnector[] }) 
         const [x2, y2] = FACE_TARGETS[connector.key] ?? [50, 50];
         return (
           <g key={connector.key}>
+            <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="rgba(0,0,0,0.48)"
+              strokeWidth={connector.active ? 0.52 : 0.32}
+              vectorEffect="non-scaling-stroke"
+            />
             <motion.line
               initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: connector.active ? 0.9 : 0.22 }}
+              animate={{ pathLength: 1, opacity: connector.active ? 1 : 0.52 }}
               transition={{ duration: 0.45, ease: "easeOut" }}
               x1={x1}
               y1={y1}
               x2={x2}
               y2={y2}
-              stroke={connector.active ? "url(#connectorActive)" : "rgba(125,216,255,0.34)"}
-              strokeWidth={connector.active ? 0.18 : 0.09}
-              strokeDasharray={connector.active ? "0.8 0.5" : "0.3 0.8"}
+              stroke={connector.active ? "url(#connectorActive)" : "rgba(125,216,255,0.68)"}
+              strokeWidth={connector.active ? 0.34 : 0.18}
+              strokeDasharray={connector.active ? "1.1 0.52" : "0.45 0.82"}
               vectorEffect="non-scaling-stroke"
+              filter={connector.active ? "url(#connectorGlow)" : undefined}
             />
-            {connector.active && <circle cx={x2} cy={y2} r="0.42" fill="rgba(245,247,251,0.82)" />}
+            {connector.active && <circle cx={x2} cy={y2} r="0.56" fill="rgba(245,247,251,0.94)" filter="url(#connectorGlow)" />}
           </g>
         );
       })}
@@ -64,5 +81,5 @@ function connectorSource(index: number, key: string): [number, number] {
   if (key === "conclusion") return [50, 80];
   const isLeft = index % 2 === 0;
   const row = Math.floor(index / 2);
-  return [isLeft ? 24 : 76, 10 + row * 8.2];
+  return [isLeft ? 26 : 74, 11 + row * 11.4];
 }

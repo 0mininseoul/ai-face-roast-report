@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { analysisErrorMessage } from "@/lib/analysis/errors";
 import type { AnalyzeRequestBody, AnalyzeSseEvent, ReportSections } from "@/types/analysis";
 
 export interface AnalysisStreamState {
@@ -8,6 +9,7 @@ export interface AnalysisStreamState {
   raw: string;
   sections: ReportSections | null;
   error: string | null;
+  statusMessage: string | null;
   isStreaming: boolean;
   isComplete: boolean;
 }
@@ -17,6 +19,7 @@ const initial: AnalysisStreamState = {
   raw: "",
   sections: null,
   error: null,
+  statusMessage: null,
   isStreaming: false,
   isComplete: false,
 };
@@ -41,7 +44,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
         body: JSON.stringify(body),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "분석 요청 실패";
+      const message = analysisErrorMessage(error);
       onEvent?.("analysis_fetch_failed", { phase: "client_fetch", message }, null);
       setState((current) => ({ ...current, isStreaming: false, error: message }));
       return null;
@@ -51,8 +54,9 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
 
     if (!response.ok || !response.body) {
       const text = await response.text();
-      onEvent?.("analysis_response_rejected", { phase: "client_fetch", status: response.status, message: text || "분석 요청 실패" });
-      setState((current) => ({ ...current, isStreaming: false, error: text || "분석 요청 실패" }));
+      const message = analysisErrorMessage(text || response.status);
+      onEvent?.("analysis_response_rejected", { phase: "client_fetch", status: response.status, message });
+      setState((current) => ({ ...current, isStreaming: false, error: message }));
       return null;
     }
 
@@ -79,9 +83,12 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
             finalReportId = parsed.reportId;
             onEvent?.("analysis_report_id_received", { phase: "client_stream" }, parsed.reportId);
             setState((current) => ({ ...current, reportId: parsed.reportId }));
+          } else if (parsed.type === "status") {
+            onEvent?.("analysis_status_received", { phase: "client_stream", message: parsed.message, attempt: parsed.attempt, maxAttempts: parsed.maxAttempts }, finalReportId);
+            setState((current) => ({ ...current, statusMessage: parsed.message }));
           } else if (parsed.type === "chunk") {
             onEvent?.("analysis_stream_chunk_received", { phase: "client_stream", chunkBytes: parsed.text.length }, finalReportId);
-            setState((current) => ({ ...current, raw: current.raw + parsed.text }));
+            setState((current) => ({ ...current, raw: current.raw + parsed.text, statusMessage: null }));
           } else if (parsed.type === "complete") {
             finalReportId = parsed.reportId;
             onEvent?.("analysis_stream_complete", { phase: "client_stream" }, parsed.reportId);
@@ -89,17 +96,19 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
               ...current,
               reportId: parsed.reportId,
               sections: parsed.sections,
+              statusMessage: null,
               isComplete: true,
               isStreaming: false,
             }));
           } else if (parsed.type === "error") {
-            onEvent?.("analysis_stream_error", { phase: "client_stream", message: parsed.message }, finalReportId);
-            setState((current) => ({ ...current, error: parsed.message, isStreaming: false }));
+            const message = analysisErrorMessage(parsed.message);
+            onEvent?.("analysis_stream_error", { phase: "client_stream", message }, finalReportId);
+            setState((current) => ({ ...current, error: message, statusMessage: null, isStreaming: false }));
           }
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "분석 응답 수신 실패";
+      const message = analysisErrorMessage(error);
       onEvent?.("analysis_stream_read_failed", { phase: "client_stream", message }, finalReportId);
       setState((current) => ({ ...current, isStreaming: false, error: message }));
       return finalReportId;

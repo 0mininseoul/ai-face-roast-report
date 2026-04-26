@@ -320,7 +320,7 @@ function AnalyzeClient() {
       )}
 
       {!isFatal && !state.sections && (
-        <AnalysisStatusPanel percent={progress.percent} label={progress.label} text="현재 촬영 프레임과 얼굴 랜드마크를 기준으로 분석 파이프라인을 진행 중입니다." />
+        <AnalysisStatusPanel percent={progress.percent} label={state.statusMessage ?? progress.label} text="현재 촬영 프레임과 얼굴 랜드마크를 기준으로 분석 파이프라인을 진행 중입니다." />
       )}
 
       {!isFatal && state.sections && <AnalysisNotice text={state.sections.meta.complianceText} />}

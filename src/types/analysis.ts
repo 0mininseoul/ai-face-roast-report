@@ -97,6 +97,7 @@ export interface AnalyzeRequestBody {
 
 export type AnalyzeSseEvent =
   | { type: "report_id"; reportId: string }
+  | { type: "status"; message: string; attempt?: number; maxAttempts?: number }
   | { type: "chunk"; text: string }
   | { type: "complete"; reportId: string; sections: ReportSections }
   | { type: "error"; message: string };
