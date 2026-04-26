@@ -26,7 +26,9 @@ export function ResultHeader({
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-bg-primary/82 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-8 py-4">
-        <Logo />
+        <Link href="/" aria-label="처음 화면으로 이동" className="rounded-xl outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent-info focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary">
+          <Logo />
+        </Link>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
