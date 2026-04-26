@@ -102,7 +102,7 @@ export function AnalysisCard({
                 </div>
               </div>
             ) : (
-              <p className={`${tone === "verdict" ? "max-h-[28vh] text-base leading-7" : "max-h-[96px] text-sm leading-6"} overflow-y-auto pr-1 font-medium text-text-primary`}>{visible}</p>
+              <p className={`${tone === "verdict" ? "max-h-[24vh] text-base leading-7" : "max-h-[132px] text-sm leading-6"} overflow-y-auto pr-1 font-medium text-text-primary`}>{visible}</p>
             )}
             {action && <div className="mt-5">{action}</div>}
           </motion.div>

@@ -31,6 +31,7 @@ import type { Gender, Landmark, ReportSections } from "@/types/analysis";
 const LOADING_CARD_REVEAL_INTERVAL_MS = 1450;
 const RESULT_CARD_REVEAL_INTERVAL_MS = 2600;
 type CardSide = "left" | "right";
+type ConnectorPoint = { x: number; y: number };
 
 export default function AnalyzePage() {
   return (
@@ -66,8 +67,9 @@ function AnalyzeClient() {
   const [sampleCount, setSampleCount] = useState(0);
   const [loadingRevealCount, setLoadingRevealCount] = useState(1);
   const [completedRevealCount, setCompletedRevealCount] = useState(0);
-  const [expandedBySide, setExpandedBySide] = useState<Record<CardSide, string | null>>(() => ({ left: null, right: null }));
-  const [isConclusionExpanded, setIsConclusionExpanded] = useState(true);
+  const [expandedCardKeys, setExpandedCardKeys] = useState<Set<string>>(() => new Set());
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [connectorSources, setConnectorSources] = useState<Record<string, ConnectorPoint>>({});
   const [muted, setMuted] = useState(false);
   const [faceWarning, setFaceWarning] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
@@ -224,8 +226,7 @@ function AnalyzeClient() {
   const loadingCards = useMemo(() => buildCards(null), []);
 
   useEffect(() => {
-    setExpandedBySide({ left: null, right: null });
-    setIsConclusionExpanded(true);
+    setExpandedCardKeys(new Set());
   }, [state.reportId]);
 
   useEffect(() => {
@@ -243,14 +244,13 @@ function AnalyzeClient() {
     const latestIndex = loadingRevealCount - 1;
     const latestCard = loadingCards[latestIndex];
     if (!latestCard) return;
-    setExpandedBySide((previous) => ({ ...previous, [getCardSide(latestIndex)]: latestCard.key }));
+    setExpandedCardKeys((previous) => new Set(previous).add(latestCard.key));
   }, [loadingCards, loadingRevealCount, state.sections]);
 
   useEffect(() => {
     if (!state.sections) return;
     setCompletedRevealCount(0);
-    setExpandedBySide({ left: null, right: null });
-    setIsConclusionExpanded(true);
+    setExpandedCardKeys(new Set());
 
     const first = window.setTimeout(() => setCompletedRevealCount(1), 520);
     const interval = window.setInterval(() => {
@@ -268,48 +268,85 @@ function AnalyzeClient() {
     const focusCard = cards[focusIndex];
     if (!focusCard) return;
 
-    if (focusCard.key === "conclusion") {
-      setIsConclusionExpanded(true);
-      return;
-    }
-
-    setExpandedBySide((previous) => ({ ...previous, [getCardSide(focusIndex)]: focusCard.key }));
+    setExpandedCardKeys((previous) => new Set(previous).add(focusCard.key));
   }, [cards, completedRevealCount, state.sections]);
 
   const isFatal = status === "denied" || status === "error" || Boolean(state.error) || Boolean(clientError);
   const visibleCount = state.sections
     ? Math.min(cards.length, Math.max(Math.min(loadingRevealCount, cards.length - 1), completedRevealCount))
     : Math.min(loadingCards.length, loadingRevealCount);
-  const visibleCards = cards.slice(0, visibleCount);
-  const expandedCardKeys = useMemo(() => {
-    const keys = new Set<string>();
-    visibleCards.forEach((card, index) => {
-      if (card.key === "conclusion") {
-        if (isConclusionExpanded) keys.add(card.key);
-        return;
-      }
-
-      if (expandedBySide[getCardSide(index)] === card.key) keys.add(card.key);
+  const visibleCards = useMemo(() => cards.slice(0, visibleCount), [cards, visibleCount]);
+  const visibleItems = useMemo(
+    () =>
+      visibleCards.map((card, index) => ({
+        card,
+        index,
+        isCompletedCard: Boolean(state.sections && index < completedRevealCount),
+        loadingCard: loadingCards[index],
+      })),
+    [completedRevealCount, loadingCards, state.sections, visibleCards],
+  );
+  const leftItems = useMemo(() => visibleItems.filter((item) => item.card.key !== "conclusion" && getCardSide(item.index) === "left"), [visibleItems]);
+  const rightItems = useMemo(() => visibleItems.filter((item) => item.card.key !== "conclusion" && getCardSide(item.index) === "right"), [visibleItems]);
+  const conclusionItem = useMemo(() => visibleItems.find((item) => item.card.key === "conclusion"), [visibleItems]);
+  const handleToggleCard = useCallback((key: string, isExpanded: boolean) => {
+    setExpandedCardKeys((previous) => {
+      const next = new Set(previous);
+      if (isExpanded) next.delete(key);
+      else next.add(key);
+      return next;
     });
-    return keys;
-  }, [expandedBySide, isConclusionExpanded, visibleCards]);
-  const handleToggleCard = useCallback((key: string, index: number, isExpanded: boolean) => {
-    if (key === "conclusion") {
-      setIsConclusionExpanded((current) => !current);
-      return;
-    }
-
-    const side = getCardSide(index);
-    setExpandedBySide((previous) => ({ ...previous, [side]: isExpanded ? null : key }));
   }, []);
-  const connectorCards = visibleCards.map((card, index) => ({ key: card.key, index, active: expandedCardKeys.has(card.key) }));
+  const connectorCards = useMemo(() => visibleItems.map((item) => ({ key: item.card.key, index: item.index, active: expandedCardKeys.has(item.card.key) })), [expandedCardKeys, visibleItems]);
+  const railBottom = conclusionItem ? 176 : 28;
+
+  const measureConnectorSources = useCallback(() => {
+    const next: Record<string, ConnectorPoint> = {};
+    for (const item of visibleItems) {
+      const node = cardRefs.current[item.card.key];
+      if (!node) continue;
+      const rect = node.getBoundingClientRect();
+      const isConclusion = item.card.key === "conclusion";
+      const side = getCardSide(item.index);
+      const xPx = isConclusion ? rect.left + rect.width / 2 : side === "left" ? rect.right : rect.left;
+      const yPx = isConclusion ? rect.top : rect.top + Math.min(rect.height * 0.5, 58);
+      next[item.card.key] = {
+        x: (xPx / window.innerWidth) * 100,
+        y: (yPx / window.innerHeight) * 100,
+      };
+    }
+    setConnectorSources((previous) => (areConnectorSourcesEqual(previous, next) ? previous : next));
+  }, [visibleItems]);
+
+  useEffect(() => {
+    measureConnectorSources();
+    const frame = window.requestAnimationFrame(measureConnectorSources);
+    const settled = window.setTimeout(measureConnectorSources, 380);
+    const observer = new ResizeObserver(measureConnectorSources);
+    for (const item of visibleItems) {
+      const node = cardRefs.current[item.card.key];
+      if (node) observer.observe(node);
+    }
+    window.addEventListener("resize", measureConnectorSources);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settled);
+      observer.disconnect();
+      window.removeEventListener("resize", measureConnectorSources);
+    };
+  }, [expandedCardKeys, measureConnectorSources, progress.percent, visibleCount, visibleItems]);
+
+  const connectorCardsWithSources = connectorCards.map((connector) => ({
+    ...connector,
+    source: connectorSources[connector.key] ?? null,
+  }));
 
   return (
     <main ref={rootRef} className="relative h-screen overflow-hidden bg-black">
       <video ref={videoRef} className="absolute inset-0 h-full w-full scale-x-[-1] object-cover opacity-85" muted playsInline />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_44%,transparent_0,transparent_22%,rgb(0_0_0_/_0.32)_62%,rgb(0_0_0_/_0.72)_100%)]" />
       <FaceMeshOverlay result={result} />
-      <CardConnectors connectors={connectorCards} />
+      <CardConnectors connectors={connectorCardsWithSources} />
       <ControlBar
         muted={muted}
         onMutedChange={(next) => {
@@ -338,41 +375,68 @@ function AnalyzeClient() {
 
       {!isFatal && state.sections && <AnalysisNotice text={state.sections.meta.complianceText} />}
 
-      {visibleCards.map((card, index) => {
-        const isConclusion = card.key === "conclusion";
-        const isExpanded = expandedCardKeys.has(card.key);
-        const isCompletedCard = Boolean(state.sections && index < completedRevealCount);
-        const loadingCard = loadingCards[index];
-        const placement = getCardPlacement(index, isConclusion);
-        return (
-          <div
-            key={card.key}
-            className={`fixed z-20 ${placement.className}`}
-            style={placement.style}
-          >
-            <AnalysisCard
-              title={card.title}
-              text={isCompletedCard ? card.text : loadingCard?.text ?? "분석 대기 중입니다."}
-              tone={isConclusion ? "verdict" : "clinical"}
-              isStreaming={!isCompletedCard}
-              expanded={isExpanded}
-              progressPercent={!isCompletedCard ? getCardProgress(progress.percent, index) : undefined}
-              progressLabel={!isCompletedCard ? loadingCard?.text : undefined}
-              className={isConclusion ? "border-accent-bad/35" : ""}
-              onToggle={() => handleToggleCard(card.key, index, isExpanded)}
-              action={
-                isConclusion && state.reportId ? (
-                  <Button className="w-full justify-center" icon={<ArrowRight className="h-4 w-4" />} onClick={() => router.push(`/result/${state.reportId}`)}>
-                    결과 페이지로 이동
-                  </Button>
-                ) : null
-              }
-            >
-              {isCompletedCard && card.key === "scores" && state.sections ? <ScoreCardContent sections={state.sections} /> : null}
-            </AnalysisCard>
-          </div>
-        );
-      })}
+      <div className="fixed left-6 top-[92px] z-20 w-[min(620px,36vw)] space-y-2 overflow-y-auto pr-1" style={{ bottom: railBottom }} onScroll={measureConnectorSources}>
+        {leftItems.map((item) => {
+          const isExpanded = expandedCardKeys.has(item.card.key);
+          return (
+            <div key={item.card.key} ref={(node) => { cardRefs.current[item.card.key] = node; }}>
+              <AnalysisCard
+                title={item.card.title}
+                text={item.isCompletedCard ? item.card.text : item.loadingCard?.text ?? "분석 대기 중입니다."}
+                isStreaming={!item.isCompletedCard}
+                expanded={isExpanded}
+                progressPercent={!item.isCompletedCard ? getCardProgress(progress.percent, item.index) : undefined}
+                progressLabel={!item.isCompletedCard ? item.loadingCard?.text : undefined}
+                onToggle={() => handleToggleCard(item.card.key, isExpanded)}
+              >
+                {item.isCompletedCard && item.card.key === "scores" && state.sections ? <ScoreCardContent sections={state.sections} /> : null}
+              </AnalysisCard>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="fixed right-6 top-[92px] z-20 w-[min(620px,36vw)] space-y-2 overflow-y-auto pl-1" style={{ bottom: railBottom }} onScroll={measureConnectorSources}>
+        {rightItems.map((item) => {
+          const isExpanded = expandedCardKeys.has(item.card.key);
+          return (
+            <div key={item.card.key} ref={(node) => { cardRefs.current[item.card.key] = node; }}>
+              <AnalysisCard
+                title={item.card.title}
+                text={item.isCompletedCard ? item.card.text : item.loadingCard?.text ?? "분석 대기 중입니다."}
+                isStreaming={!item.isCompletedCard}
+                expanded={isExpanded}
+                progressPercent={!item.isCompletedCard ? getCardProgress(progress.percent, item.index) : undefined}
+                progressLabel={!item.isCompletedCard ? item.loadingCard?.text : undefined}
+                onToggle={() => handleToggleCard(item.card.key, isExpanded)}
+              >
+                {item.isCompletedCard && item.card.key === "scores" && state.sections ? <ScoreCardContent sections={state.sections} /> : null}
+              </AnalysisCard>
+            </div>
+          );
+        })}
+      </div>
+
+      {conclusionItem && (
+        <div ref={(node) => { cardRefs.current[conclusionItem.card.key] = node; }} className="fixed bottom-8 left-1/2 z-30 w-[min(980px,72vw)] -translate-x-1/2">
+          <AnalysisCard
+            title={conclusionItem.card.title}
+            text={conclusionItem.isCompletedCard ? conclusionItem.card.text : conclusionItem.loadingCard?.text ?? "최종 결론을 구성 중입니다."}
+            tone="verdict"
+            isStreaming={!conclusionItem.isCompletedCard}
+            expanded={expandedCardKeys.has(conclusionItem.card.key)}
+            className="border-accent-bad/35"
+            onToggle={() => handleToggleCard(conclusionItem.card.key, expandedCardKeys.has(conclusionItem.card.key))}
+            action={
+              conclusionItem.isCompletedCard && state.reportId ? (
+                <Button className="w-full justify-center" icon={<ArrowRight className="h-4 w-4" />} onClick={() => router.replace(`/result/${state.reportId}`)}>
+                  결과 페이지로 이동
+                </Button>
+              ) : null
+            }
+          />
+        </div>
+      )}
 
       {isFatal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/78">
@@ -417,21 +481,6 @@ function AnalysisNotice({ text }: { text: string }) {
   );
 }
 
-function getCardPlacement(index: number, isConclusion: boolean): { className: string; style?: React.CSSProperties } {
-  if (isConclusion) {
-    return {
-      className: "left-1/2 bottom-8 w-[min(920px,68vw)] -translate-x-1/2",
-    };
-  }
-
-  const side = getCardSide(index) === "left" ? "left-7" : "right-7";
-  const top = 96 + Math.floor(index / 2) * 116;
-  return {
-    className: `${side} w-[min(430px,27vw)]`,
-    style: { top },
-  };
-}
-
 function getCardSide(index: number): CardSide {
   return index % 2 === 0 ? "left" : "right";
 }
@@ -439,6 +488,19 @@ function getCardSide(index: number): CardSide {
 function getCardProgress(globalPercent: number, index: number) {
   const value = globalPercent - index * 4 + 8;
   return Math.max(7, Math.min(96, value));
+}
+
+function areConnectorSourcesEqual(previous: Record<string, ConnectorPoint>, next: Record<string, ConnectorPoint>) {
+  const previousKeys = Object.keys(previous);
+  const nextKeys = Object.keys(next);
+  if (previousKeys.length !== nextKeys.length) return false;
+
+  return nextKeys.every((key) => {
+    const before = previous[key];
+    const after = next[key];
+    if (!before || !after) return false;
+    return Math.abs(before.x - after.x) < 0.04 && Math.abs(before.y - after.y) < 0.04;
+  });
 }
 
 function ScoreCardContent({ sections }: { sections: ReportSections }) {
@@ -451,7 +513,7 @@ function ScoreCardContent({ sections }: { sections: ReportSections }) {
   ];
 
   return (
-    <div className="max-h-[28vh] space-y-3 overflow-y-auto pr-1">
+    <div className="max-h-[250px] space-y-3 overflow-y-auto pr-1">
       {rows.map((row) => {
         const value = Math.max(0, Math.min(100, row.value));
         return (

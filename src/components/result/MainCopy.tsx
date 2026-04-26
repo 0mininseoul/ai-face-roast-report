@@ -2,13 +2,13 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 
-const MAX_FONT_SIZE = 72;
-const MIN_FONT_SIZE = 28;
+const MAX_FONT_SIZE = 64;
+const MIN_FONT_SIZE = 26;
 
 export function MainCopy({ text }: { text: string }) {
   const containerRef = useRef<HTMLElement | null>(null);
   const textRef = useRef<HTMLSpanElement | null>(null);
-  const [fit, setFit] = useState({ fontSize: 56, scaleX: 1 });
+  const [fit, setFit] = useState({ fontSize: 50, scaleX: 1 });
 
   useLayoutEffect(() => {
     const container = containerRef.current;

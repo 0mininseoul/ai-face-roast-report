@@ -6,6 +6,7 @@ export interface CardConnector {
   key: string;
   index: number;
   active: boolean;
+  source?: { x: number; y: number } | null;
 }
 
 const FACE_TARGETS: Record<string, [number, number]> = {
@@ -42,7 +43,7 @@ export function CardConnectors({ connectors }: { connectors: CardConnector[] }) 
         </linearGradient>
       </defs>
       {connectors.map((connector) => {
-        const [x1, y1] = connectorSource(connector.index, connector.key);
+        const [x1, y1] = connector.source ? [connector.source.x, connector.source.y] : connectorSource(connector.index, connector.key);
         const [x2, y2] = FACE_TARGETS[connector.key] ?? [50, 50];
         return (
           <g key={connector.key}>
@@ -67,6 +68,13 @@ export function CardConnectors({ connectors }: { connectors: CardConnector[] }) 
               strokeWidth={connector.active ? 0.34 : 0.18}
               strokeDasharray={connector.active ? "1.1 0.52" : "0.45 0.82"}
               vectorEffect="non-scaling-stroke"
+              filter={connector.active ? "url(#connectorGlow)" : undefined}
+            />
+            <circle
+              cx={x1}
+              cy={y1}
+              r={connector.active ? 0.42 : 0.28}
+              fill={connector.active ? "rgba(245,247,251,0.9)" : "rgba(125,216,255,0.56)"}
               filter={connector.active ? "url(#connectorGlow)" : undefined}
             />
             {connector.active && <circle cx={x2} cy={y2} r="0.56" fill="rgba(245,247,251,0.94)" filter="url(#connectorGlow)" />}
