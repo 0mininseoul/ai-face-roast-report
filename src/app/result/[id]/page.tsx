@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { DetailedReport } from "@/components/result/DetailedReport";
 import { FaceImage } from "@/components/result/FaceImage";
 import { MainCopy } from "@/components/result/MainCopy";
@@ -9,6 +9,7 @@ import { ResultHeader } from "@/components/result/ResultHeader";
 import { StopCameraOnMount } from "@/components/result/StopCameraOnMount";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { backfillStoredReportSections } from "@/lib/analysis/reportBackfill";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { absoluteUrl, OG_IMAGE_PATH, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
 import { getRequestOrigin } from "@/lib/siteUrl";
@@ -38,12 +39,14 @@ export default async function ResultPage({ params }: { params: { id: string } })
   if (error || !data) notFound();
 
   const row = data as FaceReportRow;
-  if (new Date(row.expires_at).getTime() <= Date.now()) redirect("/result/expired");
+  const expiresAt = new Date(row.expires_at).getTime();
+  if (expiresAt <= Date.now()) notFound();
   if (isPendingResultStatus(row.status)) return <PendingResultPage status={row.status} retryAfter={row.retry_after ?? null} />;
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) notFound();
 
   const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), { gender: row.gender });
-  const { data: signed } = await supabase.storage.from("face-images").createSignedUrl(row.face_image_path, 60 * 60 * 24);
+  const imageTtlSeconds = Math.max(1, Math.min(60 * 60 * 24, Math.floor((expiresAt - Date.now()) / 1000)));
+  const { data: signed } = await supabase.storage.from("face-images").createSignedUrl(row.face_image_path, imageTtlSeconds);
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
@@ -91,26 +94,4 @@ function PendingResultPage({ status, retryAfter }: { status: FaceReportStatus; r
 
 function isPendingResultStatus(status: FaceReportStatus): boolean {
   return status === "queued" || status === "processing" || status === "retrying" || status === "analyzing";
-}
-
-function backfillStoredReportSections(input: unknown) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
-
-  const report = input as Record<string, unknown>;
-  const impression = report.impression;
-  if (!impression || typeof impression !== "object" || Array.isArray(impression)) return input;
-
-  const nextImpression = { ...impression } as Record<string, unknown>;
-  const estimatedAge = typeof nextImpression.estimatedAge === "number" ? nextImpression.estimatedAge : null;
-  const estimatedAgeReal = typeof nextImpression.estimatedAgeReal === "number" ? nextImpression.estimatedAgeReal : estimatedAge;
-
-  if (estimatedAgeReal !== null) {
-    nextImpression.estimatedAgeReal = estimatedAgeReal;
-  }
-
-  if (nextImpression.ageBucket !== "under_35" && nextImpression.ageBucket !== "over_35" && estimatedAgeReal !== null) {
-    nextImpression.ageBucket = estimatedAgeReal < 35 ? "under_35" : "over_35";
-  }
-
-  return { ...report, impression: nextImpression };
 }

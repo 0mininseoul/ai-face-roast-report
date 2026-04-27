@@ -17,6 +17,8 @@ cp .env.local.example .env.local
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `NEXT_PUBLIC_KAKAO_JS_KEY`
 - `NEXT_PUBLIC_BASE_URL`
+- `ADMIN_DATA_USERNAME`
+- `ADMIN_DATA_PASSWORD`
 
 프롬프트는 QA하면서 바로 수정할 수 있도록 코드와 분리되어 있습니다.
 
