@@ -1,6 +1,7 @@
 "use client";
 
 const SESSION_STORAGE_KEY = "ai-face-report-session-id";
+const DEVICE_STORAGE_KEY = "ai-face-report-device-id";
 
 export type ClientEventLevel = "debug" | "info" | "warn" | "error";
 
@@ -18,12 +19,28 @@ export function getClientSessionId(): string {
   const existing = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
   if (existing) return existing;
 
-  const next =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const next = generateRandomId();
   window.sessionStorage.setItem(SESSION_STORAGE_KEY, next);
   return next;
+}
+
+export function getClientDeviceId(): string {
+  if (typeof window === "undefined") return "server";
+  try {
+    const existing = window.localStorage.getItem(DEVICE_STORAGE_KEY);
+    if (existing) return existing;
+    const next = generateRandomId();
+    window.localStorage.setItem(DEVICE_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return getClientSessionId();
+  }
+}
+
+function generateRandomId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function logClientEvent(input: ClientEventPayload): void {

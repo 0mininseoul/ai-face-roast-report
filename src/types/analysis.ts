@@ -106,12 +106,19 @@ export interface FaceReportRow {
   completed_at?: string | null;
 }
 
+export interface ClientLivenessSignal {
+  variance: number;
+  sampleCount: number;
+}
+
 export interface AnalyzeRequestBody {
   gender: Gender;
   metrics: FaceMetrics;
   landmarks?: Landmark[];
   imageBase64: string;
   clientSessionId?: string;
+  deviceId?: string;
+  liveness?: ClientLivenessSignal;
 }
 
 export interface AnalyzeStartResponse {

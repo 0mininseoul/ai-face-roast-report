@@ -1,7 +1,9 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest } from "next/server";
 import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
-import { processAnalysisJob } from "@/lib/analysis/jobRunner";
+import { drainAnalysisQueue } from "@/lib/analysis/jobRunner";
+import { MIN_LANDMARK_VARIANCE } from "@/lib/analysis/liveness";
+import { checkDailyQuota, recordQuotaUsage } from "@/lib/analysis/quota";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
@@ -44,6 +46,10 @@ export async function POST(req: NextRequest) {
     return new Response("Missing required fields", { status: 400 });
   }
 
+  const deviceId = sanitizeDeviceId(body.deviceId);
+  const liveness = body.liveness ?? null;
+  const livenessVariance = typeof liveness?.variance === "number" && Number.isFinite(liveness.variance) ? liveness.variance : null;
+
   await logServiceEvent({
     req,
     sessionId: body.clientSessionId,
@@ -52,12 +58,43 @@ export async function POST(req: NextRequest) {
     payload: {
       gender: body.gender,
       captureBytesApprox: Math.round(stripDataUrl(body.imageBase64).length * 0.75),
+      deviceId,
+      livenessVariance,
+      livenessSampleCount: liveness?.sampleCount ?? null,
     },
   });
 
   const supabase = getServerSupabase();
   const hashedIp = await ipHash(ip);
   const userAgent = req.headers.get("user-agent") ?? "";
+
+  if (livenessVariance === null || livenessVariance < MIN_LANDMARK_VARIANCE) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_liveness_rejected",
+      phase: "server_request",
+      level: "warn",
+      payload: { livenessVariance, threshold: MIN_LANDMARK_VARIANCE, deviceId, hasLiveness: Boolean(liveness) },
+    });
+    return Response.json({ error: "live_capture_required" }, { status: 422 });
+  }
+
+  const quota = await checkDailyQuota(hashedIp, deviceId);
+  if (!quota.ok) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_daily_quota_exceeded",
+      phase: "server_request",
+      level: "warn",
+      payload: { count: quota.count, limit: quota.limit, windowHours: quota.windowHours, matchedBy: quota.matchedBy, deviceId },
+    });
+    return Response.json(
+      { error: "daily_limit_reached", limit: quota.limit, windowHours: quota.windowHours },
+      { status: 429 },
+    );
+  }
 
   const { data: inserted, error: insertError } = await supabase
     .from("face_reports")
@@ -142,8 +179,10 @@ export async function POST(req: NextRequest) {
     payload: { bytes: imageBuffer.length },
   });
 
+  await recordQuotaUsage({ ipHash: hashedIp, deviceId, reportId });
+
   waitUntil(
-    processAnalysisJob(reportId, { sessionId: body.clientSessionId }).catch((error) =>
+    drainAnalysisQueue({ targetId: reportId, sessionId: body.clientSessionId }).catch((error) =>
       logServiceEvent({
         sessionId: body.clientSessionId,
         reportId,
@@ -165,4 +204,12 @@ export async function POST(req: NextRequest) {
 
 function stripDataUrl(input: string): string {
   return input.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
+}
+
+function sanitizeDeviceId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 64) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) return null;
+  return trimmed;
 }

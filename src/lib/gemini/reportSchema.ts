@@ -1,8 +1,15 @@
 import { reportSectionsSchema, type ReportSections } from "@/types/analysis";
 
+export const IMAGE_SOURCE_VALUES = ["real_webcam", "staged_photo", "virtual_camera", "other_person", "non_human"] as const;
+export type ImageSource = (typeof IMAGE_SOURCE_VALUES)[number];
+
 export const REPORT_RESPONSE_JSON_SCHEMA = {
   type: "object",
   properties: {
+    image_source: {
+      type: "string",
+      enum: [...IMAGE_SOURCE_VALUES],
+    },
     meta: {
       type: "object",
       properties: {
@@ -73,8 +80,15 @@ export const REPORT_RESPONSE_JSON_SCHEMA = {
     conclusion: { type: "string" },
     mainCopy: { type: "string" },
   },
-  required: ["meta", "geometry", "parts", "scores", "impression", "conclusion", "mainCopy"],
+  required: ["image_source", "meta", "geometry", "parts", "scores", "impression", "conclusion", "mainCopy"],
 } as const;
+
+export function extractImageSource(input: unknown): ImageSource | null {
+  if (!input || typeof input !== "object") return null;
+  const value = (input as { image_source?: unknown }).image_source;
+  if (typeof value !== "string") return null;
+  return (IMAGE_SOURCE_VALUES as readonly string[]).includes(value) ? (value as ImageSource) : null;
+}
 
 function partSchema() {
   return {

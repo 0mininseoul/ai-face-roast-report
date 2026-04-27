@@ -61,13 +61,25 @@ describe("analyze system prompt guardrails", () => {
     expect(prompt).toContain("`ㅅㅂ`, `ㅈㄴ`과 밈 단어 `와꾸바리`는 사용할 수 있습니다");
   });
 
+  it("uses displayed estimated age as the tone bucket boundary", () => {
+    expect(prompt).toContain("결과 화면에 표시되는 추정 연령에 따라");
+    expect(prompt).toContain("**`impression.age_bucket`**: `estimated_age`가 35 미만이면");
+    expect(prompt).toContain("`estimated_age_real=32`, `estimated_age=37`이면 반드시 `\"over_35\"`");
+  });
+
+  it("bans casual slang for every displayed age 35-or-older report", () => {
+    expect(prompt).toContain("성별과 무관하게 `impression.estimated_age`가 35 이상으로 표시되면");
+    expect(prompt).toContain("`씨발`, `ㅅㅂ`, `존나`, `좆`, `ㅋㅋ`를 쓰지 않습니다");
+    expect(prompt).toContain("`impression.estimated_age`가 35 이상인 경우");
+  });
+
   it("bans grade shorthand slang for every user", () => {
     expect(prompt).toContain("모든 성별에서 등급 축약어 `ㅆㅅㅌㅊ`, `ㅅㅌㅊ`, `ㅍㅌㅊ`, `ㅎㅌㅊ`를 쓰지 않습니다");
   });
 
   it("keeps internal age and user-facing age separated", () => {
     expect(prompt).toContain("사용자에게 보이는 문장에는 절대 직접 언급하지 않습니다");
-    expect(prompt).toContain("결론을 제외한 사용자 노출 문장에 쓰는 *표시용 연령*");
+    expect(prompt).toContain("사용자 노출 문장에 쓰는 *표시용 연령*이자 톤 분기 기준입니다");
     expect(prompt).toContain("`conclusion`에서는 현재 나이를 숫자로 단정하지 않습니다");
     expect(prompt).toContain("한 문단 안에서 서로 다른 연령대 표현을 섞지 마세요");
     expect(prompt).toContain("30대 초반처럼 보이는 인상");
@@ -76,5 +88,16 @@ describe("analyze system prompt guardrails", () => {
   it("bans raw metric numbers from the final conclusion", () => {
     expect(prompt).toContain("`conclusion`에는 `%`, `도`, `mm`, 점수, 소수점 비율 같은 raw metric 숫자를 직접 쓰지 않습니다");
     expect(prompt).toContain("숫자를 비틀어 \"망할 확률\", \"인생 점수\"처럼 재해석하지 마세요");
+  });
+
+  it("requires the model to classify the input image source before anything else", () => {
+    expect(prompt).toContain("입력 영상 출처 분류");
+    expect(prompt).toContain("최상위 필드 `image_source`");
+    expect(prompt).toContain("`real_webcam`");
+    expect(prompt).toContain("`staged_photo`");
+    expect(prompt).toContain("`virtual_camera`");
+    expect(prompt).toContain("`other_person`");
+    expect(prompt).toContain("`non_human`");
+    expect(prompt).toContain("좌우 검은 띠");
   });
 });

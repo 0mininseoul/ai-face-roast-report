@@ -4,7 +4,7 @@ import { getGenAi, MODEL_ANALYSIS, MODEL_ANALYSIS_FALLBACK, MODEL_ANALYSIS_FAST 
 import { buildAnalysisModelChain } from "@/lib/gemini/modelSelection";
 import { buildAnalyzeUserPrompt } from "@/lib/gemini/promptText";
 import { readAnalyzeSystemPrompt } from "@/lib/gemini/prompts";
-import { normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
+import { extractImageSource, normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
 import { pickMainCopy } from "@/lib/copy/mainCopy";
 import { analysisErrorMessage, extractErrorText, isRetryableAnalysisError } from "@/lib/analysis/errors";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
@@ -14,6 +14,7 @@ import type { AnalysisJobStatus, FaceReportRow, FaceReportStatus, ReportSections
 
 interface AnalysisJobContext {
   sessionId?: string | null;
+  jobBudgetMs?: number | null;
 }
 
 interface ClaimedJobResult {
@@ -22,14 +23,90 @@ interface ClaimedJobResult {
   status: AnalysisJobStatus | "skipped";
 }
 
+export interface DrainAnalysisQueueResult {
+  attempted: number;
+  claimed: number;
+  completed: number;
+  failed: number;
+  retrying: number;
+  skipped: number;
+  durationMs: number;
+  remainingBudgetMs: number;
+  results: ClaimedJobResult[];
+}
+
 const DEFAULT_MAX_CONCURRENT_ANALYSES = 2;
 const DEFAULT_JOB_LOCK_SECONDS = 270;
 const DEFAULT_JOB_BUDGET_MS = 270_000;
+const DEFAULT_DRAIN_MAX_JOBS = 2;
+const DEFAULT_DRAIN_BUDGET_MS = 240_000;
+const DEFAULT_DRAIN_MIN_NEXT_JOB_BUDGET_MS = 45_000;
 const DEFAULT_PRIMARY_TIMEOUT_MS = 75_000;
 const DEFAULT_FALLBACK_TIMEOUT_MS = 55_000;
 const DEFAULT_FAST_TIMEOUT_MS = 30_000;
 const DEFAULT_PRIMARY_RETRY_ATTEMPTS = 2;
 const DEFAULT_PRIMARY_RETRY_DELAY_MS = 8_000;
+
+export async function drainAnalysisQueue({
+  targetId = null,
+  sessionId = null,
+  maxJobs = intEnv("ANALYSIS_DRAIN_MAX_JOBS", DEFAULT_DRAIN_MAX_JOBS),
+  budgetMs = intEnv("ANALYSIS_DRAIN_BUDGET_MS", DEFAULT_DRAIN_BUDGET_MS),
+}: {
+  targetId?: string | null;
+  sessionId?: string | null;
+  maxJobs?: number;
+  budgetMs?: number;
+} = {}): Promise<DrainAnalysisQueueResult> {
+  const startedAt = Date.now();
+  const safeMaxJobs = Math.max(1, Math.min(maxJobs, 10));
+  const safeBudgetMs = Math.max(10_000, budgetMs);
+  const results: ClaimedJobResult[] = [];
+
+  await logServiceEvent({
+    sessionId,
+    reportId: targetId,
+    eventName: "analysis_drain_started",
+    phase: "server_worker",
+    payload: { targetReportId: targetId, maxJobs: safeMaxJobs, budgetMs: safeBudgetMs },
+  });
+
+  let nextTargetId = targetId;
+  for (let index = 0; index < safeMaxJobs; index += 1) {
+    const remainingBudgetMs = safeBudgetMs - (Date.now() - startedAt);
+    if (remainingBudgetMs < intEnv("ANALYSIS_DRAIN_MIN_NEXT_JOB_BUDGET_MS", DEFAULT_DRAIN_MIN_NEXT_JOB_BUDGET_MS)) break;
+
+    const result = await processAnalysisJob(nextTargetId, {
+      sessionId,
+      jobBudgetMs: Math.max(10_000, remainingBudgetMs - 5_000),
+    });
+    results.push(result);
+    nextTargetId = null;
+
+    if (result.status === "skipped") break;
+  }
+
+  const summary = summarizeDrainResults(results, startedAt, safeBudgetMs);
+  await logServiceEvent({
+    sessionId,
+    reportId: targetId,
+    eventName: "analysis_drain_completed",
+    phase: "server_worker",
+    payload: {
+      targetReportId: targetId,
+      attempted: summary.attempted,
+      claimed: summary.claimed,
+      completed: summary.completed,
+      failed: summary.failed,
+      retrying: summary.retrying,
+      skipped: summary.skipped,
+      durationMs: summary.durationMs,
+      remainingBudgetMs: summary.remainingBudgetMs,
+    },
+  });
+
+  return summary;
+}
 
 export async function processAnalysisJob(reportId?: string | null, context: AnalysisJobContext = {}): Promise<ClaimedJobResult> {
   const row = await claimAnalysisJob(reportId ?? null);
@@ -120,6 +197,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
   const imageBase64 = await downloadFaceImage(row.face_image_path);
   const systemInstruction = await readAnalyzeSystemPrompt();
   const startedAt = Date.now();
+  const jobBudgetMs = context.jobBudgetMs && context.jobBudgetMs > 0 ? context.jobBudgetMs : intEnv("ANALYSIS_JOB_BUDGET_MS", DEFAULT_JOB_BUDGET_MS);
   const modelChain = buildAnalysisModelChain({
     primaryModel: MODEL_ANALYSIS,
     fallbackModel: MODEL_ANALYSIS_FALLBACK,
@@ -140,7 +218,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
   });
 
   for (const [index, model] of modelChain.entries()) {
-    const remainingBudgetMs = intEnv("ANALYSIS_JOB_BUDGET_MS", DEFAULT_JOB_BUDGET_MS) - (Date.now() - startedAt);
+    const remainingBudgetMs = jobBudgetMs - (Date.now() - startedAt);
     if (remainingBudgetMs < 10_000) {
       errors.push(new Error("analysis_job_budget_exceeded"));
       break;
@@ -171,7 +249,20 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
         imageBase64,
         timeoutMs,
       });
-      const parsed = parseReport(raw);
+      const rawJson = parseRawReportJson(raw);
+      const imageSource = extractImageSource(rawJson);
+      if (imageSource && imageSource !== "real_webcam") {
+        await logServiceEvent({
+          sessionId: context.sessionId,
+          reportId: row.id,
+          eventName: "analysis_non_live_input_detected",
+          phase: "server_worker",
+          level: "warn",
+          payload: { model, imageSource },
+        });
+        throw new Error(`non_live_input:${imageSource}`);
+      }
+      const parsed = normalizeGeminiReport(rawJson);
       const sections = postprocessReportSections(
         {
           ...parsed,
@@ -195,6 +286,10 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
       return "complete";
     } catch (error) {
       errors.push(error);
+      if (isNonLiveInputError(error)) {
+        await markJobFailed(row.id, error, model);
+        return "failed";
+      }
       const isPrimaryAttempt = index === 0 && model === MODEL_ANALYSIS;
       const hasMoreFallbackModels = index < modelChain.length - 1;
       const canRetryPrimaryLater =
@@ -343,9 +438,13 @@ async function markJobFailed(reportId: string, error: unknown, model: string | n
     .eq("id", reportId);
 }
 
-function parseReport(raw: string): ReportSections {
+function isNonLiveInputError(error: unknown): boolean {
+  return extractErrorText(error).toLowerCase().includes("non_live_input");
+}
+
+function parseRawReportJson(raw: string): unknown {
   const trimmed = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  return normalizeGeminiReport(JSON.parse(trimmed));
+  return JSON.parse(trimmed);
 }
 
 function modelTimeoutMs(model: string): number {
@@ -356,6 +455,21 @@ function modelTimeoutMs(model: string): number {
 
 function truncateError(error: unknown): string {
   return extractErrorText(error).slice(0, 2000);
+}
+
+function summarizeDrainResults(results: ClaimedJobResult[], startedAt: number, budgetMs: number): DrainAnalysisQueueResult {
+  const durationMs = Date.now() - startedAt;
+  return {
+    attempted: results.length,
+    claimed: results.filter((result) => result.status !== "skipped").length,
+    completed: results.filter((result) => result.status === "complete").length,
+    failed: results.filter((result) => result.status === "failed").length,
+    retrying: results.filter((result) => result.status === "retrying").length,
+    skipped: results.filter((result) => result.status === "skipped").length,
+    durationMs,
+    remainingBudgetMs: Math.max(0, budgetMs - durationMs),
+    results,
+  };
 }
 
 function intEnv(name: string, fallback: number): number {

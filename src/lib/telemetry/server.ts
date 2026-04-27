@@ -7,6 +7,9 @@ type ServiceEventLevel = "debug" | "info" | "warn" | "error";
 
 const OPERATIONAL_WARNING_EVENTS = new Set([
   "analysis_rate_limited",
+  "analysis_liveness_rejected",
+  "analysis_daily_quota_exceeded",
+  "analysis_non_live_input_detected",
   "feedback_rate_limited",
 ]);
 
@@ -16,6 +19,7 @@ const OPERATIONAL_ERROR_EVENTS = new Set([
   "analysis_report_update_failed",
   "analysis_background_start_failed",
   "analysis_status_wake_failed",
+  "analysis_drain_failed",
   "analysis_job_failed_unhandled",
   "analysis_report_failed",
   "analysis_client_request_failed",

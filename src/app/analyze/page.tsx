@@ -18,11 +18,12 @@ import {
   sampleProgressBucket,
   type AnalysisTrigger,
 } from "@/lib/analysis/sampling";
+import { MIN_LANDMARK_VARIANCE, computeLivenessSignal, isLivenessAcceptable } from "@/lib/analysis/liveness";
 import { getAnalysisProgress } from "@/lib/analysis/progress";
 import { captureVideoFrame, downloadElementScreenshot } from "@/lib/capture/screenshot";
 import { averageLandmarks, computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
 import { setMuted as setGlobalMuted } from "@/lib/sound/sfx";
-import { getClientSessionId, logClientEvent } from "@/lib/telemetry/client";
+import { getClientDeviceId, getClientSessionId, logClientEvent } from "@/lib/telemetry/client";
 import { useAnalysisStream } from "@/hooks/useAnalysisStream";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceLandmarker } from "@/hooks/useFaceLandmarker";
@@ -30,6 +31,9 @@ import type { Gender, Landmark, ReportSections } from "@/types/analysis";
 
 const LOADING_CARD_REVEAL_INTERVAL_MS = 1450;
 const RESULT_CARD_REVEAL_INTERVAL_MS = 2600;
+const ANALYSIS_CAPTURE_SETTLE_MS = 800;
+const LIVENESS_WARNING_MS = 3500;
+const LIVENESS_WARNING_TEXT = "카메라 앞에서 얼굴을 살짝 움직여 주세요";
 type CardSide = "left" | "right";
 type ConnectorPoint = { x: number; y: number };
 
@@ -63,6 +67,8 @@ function AnalyzeClient() {
   const lastSampleLogRef = useRef(0);
   const longWaitLoggedRef = useRef(false);
   const lastLandmarkLostLogRef = useRef(0);
+  const landmarkLossCountRef = useRef(0);
+  const livenessWarningUntilRef = useRef(0);
   const reportIdRef = useRef<string | null>(null);
   const sampleRef = useRef<Landmark[][]>([]);
   const [sampleCount, setSampleCount] = useState(0);
@@ -111,7 +117,7 @@ function AnalyzeClient() {
   }, [isLoading, logEvent, status]);
 
   const beginAnalysis = useCallback(
-    (samples: Landmark[][], trigger: AnalysisTrigger) => {
+    async (samples: Landmark[][], trigger: AnalysisTrigger) => {
       if (!gender || startedRef.current || status !== "ready" || !videoRef.current || !canStartAnalysis(samples.length, trigger)) return false;
 
       const selectedSamples = samples.slice(-TARGET_SAMPLE_COUNT);
@@ -122,16 +128,60 @@ function AnalyzeClient() {
       startedRef.current = true;
 
       try {
-        const averaged = averageLandmarks(selectedSamples);
+        const liveness = computeLivenessSignal(selectedSamples);
+        if (!isLivenessAcceptable(liveness)) {
+          startedRef.current = false;
+          logEvent(
+            "analysis_client_liveness_blocked",
+            {
+              variance: liveness.variance,
+              threshold: MIN_LANDMARK_VARIANCE,
+              sampleCount: liveness.sampleCount,
+            },
+            null,
+            "warn",
+          );
+          setSampleCount(0);
+          sampleRef.current = [];
+          livenessWarningUntilRef.current = Date.now() + LIVENESS_WARNING_MS;
+          setFaceWarning(LIVENESS_WARNING_TEXT);
+          return false;
+        }
+
+        const landmarkLossCountAtSettleStart = landmarkLossCountRef.current;
+        logEvent("analysis_capture_settle_started", { delayMs: ANALYSIS_CAPTURE_SETTLE_MS, trigger, sampleCount: selectedSamples.length });
+        await delay(ANALYSIS_CAPTURE_SETTLE_MS);
+
+        const video = videoRef.current;
+        if (!video || video.readyState < 2 || !faceVisibleRef.current || landmarkLossCountRef.current !== landmarkLossCountAtSettleStart) {
+          startedRef.current = false;
+          sampleRef.current = [];
+          setSampleCount(0);
+          setFaceWarning("얼굴이 잘 보이도록 자세를 잡아주세요");
+          logEvent("analysis_capture_settle_lost_face", { delayMs: ANALYSIS_CAPTURE_SETTLE_MS, trigger }, null, "warn");
+          return false;
+        }
+
+        const settledSamples = sampleRef.current.length > 0 ? sampleRef.current.slice(-TARGET_SAMPLE_COUNT) : selectedSamples;
+        const averaged = averageLandmarks(settledSamples);
         const metrics = computeFaceMetrics(averaged);
-        const imageBase64 = captureVideoFrame(videoRef.current, 1280, 720, 0.85);
-        logEvent("analysis_client_payload_ready", { trigger, sampleCount: selectedSamples.length, gender });
+        const imageBase64 = captureVideoFrame(video, 1280, 720, 0.85);
+        logEvent("analysis_client_payload_ready", {
+          trigger,
+          sampleCount: settledSamples.length,
+          initialSampleCount: selectedSamples.length,
+          captureSettleMs: ANALYSIS_CAPTURE_SETTLE_MS,
+          gender,
+          livenessVariance: liveness.variance,
+        });
         void startAnalysis({
           gender,
           metrics,
           landmarks: averaged,
           imageBase64,
           clientSessionId: getClientSessionId(),
+          deviceId: getClientDeviceId(),
+          liveness,
         }).catch((caught) => {
           const message = caught instanceof Error ? caught.message : "분석 요청 실패";
           logEvent("analysis_client_request_failed", { message }, null, "error");
@@ -154,6 +204,7 @@ function AnalyzeClient() {
         lastLandmarkLostLogRef.current = Date.now();
         logEvent("face_landmarks_lost", { sampleCount: sampleRef.current.length }, null, "info");
       }
+      if (faceVisibleRef.current) landmarkLossCountRef.current += 1;
       faceVisibleRef.current = false;
       sampleRef.current = [];
       setSampleCount(0);
@@ -163,11 +214,12 @@ function AnalyzeClient() {
 
     const faceCount = result?.faceLandmarks?.length ?? 1;
     const nextSamples = appendLandmarkSample(sampleRef.current, landmarks);
+    const livenessWarning = Date.now() < livenessWarningUntilRef.current ? LIVENESS_WARNING_TEXT : null;
     faceVisibleRef.current = true;
     lastLandmarkLostLogRef.current = 0;
     sampleRef.current = nextSamples;
     setSampleCount(nextSamples.length);
-    setFaceWarning(faceCount > 1 ? "가장 큰 얼굴 1개만 분석합니다" : null);
+    setFaceWarning(faceCount > 1 ? "가장 큰 얼굴 1개만 분석합니다" : livenessWarning);
 
     if (!firstLandmarkLoggedRef.current) {
       firstLandmarkLoggedRef.current = true;
@@ -181,7 +233,7 @@ function AnalyzeClient() {
     }
 
     if (canStartAnalysis(nextSamples.length, "target_samples")) {
-      beginAnalysis(nextSamples, "target_samples");
+      void beginAnalysis(nextSamples, "target_samples");
     }
   }, [beginAnalysis, landmarks, logEvent, result]);
 
@@ -201,7 +253,7 @@ function AnalyzeClient() {
       const samples = sampleRef.current;
       if (elapsedMs >= COLLECTION_TIMEOUT_MS && canStartAnalysis(samples.length, "timeout_fallback")) {
         logEvent("face_sample_collection_timeout_fallback", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
-        beginAnalysis(samples, "timeout_fallback");
+        void beginAnalysis(samples, "timeout_fallback");
         return;
       }
 
@@ -499,6 +551,10 @@ function getCardProgress(globalPercent: number, index: number) {
 
 function shouldLogLandmarkLost(lastLoggedAt: number) {
   return lastLoggedAt === 0 || Date.now() - lastLoggedAt >= 10_000;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function areConnectorSourcesEqual(previous: Record<string, ConnectorPoint>, next: Record<string, ConnectorPoint>) {

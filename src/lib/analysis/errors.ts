@@ -2,6 +2,18 @@ export function analysisErrorMessage(error: unknown): string {
   const raw = extractErrorText(error);
   const normalized = raw.toLowerCase();
 
+  if (normalized.includes("daily_limit_reached")) {
+    return "오늘은 이미 3회 분석을 완료했어요. 24시간 뒤에 다시 시도해 주세요.";
+  }
+
+  if (normalized.includes("non_live_input")) {
+    return "본인 얼굴이 카메라에 직접 비춰져야 분석할 수 있어요. 사진이나 화면에 비친 얼굴은 분석되지 않아요.";
+  }
+
+  if (normalized.includes("live_capture_required")) {
+    return "얼굴이 너무 정지해 있어서 분석을 시작할 수 없어요. 카메라 앞에서 얼굴을 살짝 움직여 주세요.";
+  }
+
   if (normalized.includes("high demand") || normalized.includes("unavailable") || normalized.includes("service unavailable") || normalized.includes("503")) {
     return "AI 분석 응답이 일시적으로 지연되고 있습니다. 잠시 후 다시 시도해 주세요.";
   }

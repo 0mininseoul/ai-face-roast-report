@@ -200,6 +200,55 @@ describe("postprocessReportSections", () => {
     expect(processed.conclusion).toContain("와꾸바리");
   });
 
+  it("removes casual slang and laughs for reports with displayed age 35 or older", () => {
+    const sections = makeSections({
+      conclusion: "아 ㅅㅂ 30대 중반처럼 보이는 인상인데 셀카 앱도 답이 없다 ㅋㅋ.",
+      mainCopy: "얼굴 보자마자 ㅅㅂ 소리 나온 거 겨우 참음 ㅋㅋ",
+      parts: {
+        forehead: { metricsText: "", comment: "" },
+        eyes: { metricsText: "눈매가 ㅅㅂ 소리 나올 정도로 흐릿하다 ㅋㅋ.", comment: "" },
+        nose: { metricsText: "", comment: "" },
+        mouth: { metricsText: "", comment: "" },
+        jaw: { metricsText: "", comment: "" },
+        skin: { observation: "", comment: "" },
+      },
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 36,
+        estimatedAgeReal: 31,
+        ageBucket: "under_35",
+        physiognomy: "",
+      },
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "female" });
+    const text = [processed.conclusion, processed.mainCopy, processed.parts.eyes.metricsText].join(" ");
+    expect(text).not.toMatch(/[ㅅㅆ]\s*ㅂ|ㅋ{2,}/);
+    expect(text).toContain("진짜");
+    expect(processed.conclusion).not.toContain("공개 처형문");
+  });
+
+  it("removes male profanity when displayed age is 35 or older even if ageBucket is under_35", () => {
+    const sections = makeSections({
+      conclusion: "씨발 대칭성은 괜찮은데 비율이 좆박아서 존나 답답해 보이는 와꾸다 ㅋㅋ.",
+      mainCopy: "와꾸 진짜 좆박았네 ㅋㅋ",
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 37,
+        estimatedAgeReal: 32,
+        ageBucket: "under_35",
+        physiognomy: "",
+      },
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "male" });
+    const text = [processed.conclusion, processed.mainCopy].join(" ");
+    expect(text).not.toMatch(/[씨시]\s*발|좆|존\s*나|와꾸|ㅋ{2,}/);
+    expect(text).toContain("무너져서");
+    expect(text).toContain("얼굴");
+    expect(processed.conclusion).not.toContain("공개 처형문");
+  });
+
   it("removes unexplained raw metric claims from the final conclusion", () => {
     const sections = makeSections({
       conclusion:

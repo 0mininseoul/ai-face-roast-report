@@ -29,6 +29,26 @@ const FEMALE_BANNED_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
   [/([가-힣])노([?!….]?)(?=\s|$)/g, "$1냐$2"],
 ];
 
+const POLITE_TONE_DISPLAY_AGE = 35;
+
+const POLITE_TONE_BANNED_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/[ㅅㅆ]\s*ㅂ/gi, "진짜"],
+  [/[씨시]\s*발(?:아|놈|년|새끼)?/gi, "진짜"],
+  [/좆\s*박아서/gi, "무너져서"],
+  [/좆\s*박았다/gi, "무너졌다"],
+  [/좆\s*박았/gi, "무너졌"],
+  [/좆\s*박은/gi, "무너진"],
+  [/좆\s*박/gi, "무너짐"],
+  [/좆\s*나(?:게)?|존\s*나(?:게)?/gi, "너무"],
+  [/좆/gi, ""],
+  [/와꾸가/gi, "얼굴이"],
+  [/와꾸는/gi, "얼굴은"],
+  [/와꾸를/gi, "얼굴을"],
+  [/와꾸도/gi, "얼굴도"],
+  [/와꾸/gi, "얼굴"],
+  [/병\s*신/gi, "답 없는"],
+];
+
 const GENERAL_BANNED_SLANG_REPLACEMENTS: Array<[RegExp, string]> = [
   [/ㅆㅅㅌㅊ는/gi, "최상위권은"],
   [/ㅆㅅㅌㅊ가/gi, "최상위권이"],
@@ -60,16 +80,17 @@ export function postprocessReportSections(sections: ReportSections, options: Pos
   const storageSanitized = sanitizeStorageMentions(sections);
   const ageAligned = alignUserFacingAgeMentions(storageSanitized);
   const slangSanitized = sanitizeGeneralBannedSlang(ageAligned);
-  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(slangSanitized) : slangSanitized;
-  const isOver35 = sanitized.impression.ageBucket === "over_35";
-  const fallbackConclusion = isOver35
+  const femaleSanitized = options.gender === "female" ? sanitizeFemaleBannedWords(slangSanitized) : slangSanitized;
+  const usesPoliteTone = usesPoliteReportTone(femaleSanitized);
+  const sanitized = usesPoliteTone ? sanitizePoliteTone(femaleSanitized) : femaleSanitized;
+  const fallbackConclusion = usesPoliteTone
     ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
     : "최종 결론은 처참하다.";
   const conclusion = sanitized.conclusion?.trim() || fallbackConclusion;
   return {
     ...sanitized,
-    conclusion: isOver35 ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
-    mainCopy: isOver35 ? stripCasualLaughs(sanitized.mainCopy) : sanitized.mainCopy,
+    conclusion: usesPoliteTone ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
+    mainCopy: usesPoliteTone ? stripCasualLaughs(sanitized.mainCopy) : sanitized.mainCopy,
   };
 }
 
@@ -221,8 +242,17 @@ function sanitizeFemaleBannedWords(sections: ReportSections): ReportSections {
   return mapReportText(sections, sanitizeFemaleBannedText);
 }
 
+function sanitizePoliteTone(sections: ReportSections): ReportSections {
+  return mapReportText(sections, sanitizePoliteToneText);
+}
+
 function sanitizeGeneralBannedSlang(sections: ReportSections): ReportSections {
   return mapReportText(sections, sanitizeGeneralBannedSlangText);
+}
+
+function usesPoliteReportTone(sections: ReportSections): boolean {
+  const displayAge = normalizedAge(sections.impression.estimatedAge);
+  return sections.impression.ageBucket === "over_35" || (displayAge !== null && displayAge >= POLITE_TONE_DISPLAY_AGE);
 }
 
 function mapReportText(sections: ReportSections, mapText: (text: string) => string): ReportSections {
@@ -291,6 +321,12 @@ function sanitizeFemaleBannedText(text: string): string {
     .replace(/([가-힣]+권)가/g, "$1이")
     .replace(/\.\s*\?/g, ".")
     .replace(/^\?\s*/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizePoliteToneText(text: string): string {
+  return stripCasualLaughs(POLITE_TONE_BANNED_WORD_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text))
     .replace(/\s{2,}/g, " ")
     .trim();
 }

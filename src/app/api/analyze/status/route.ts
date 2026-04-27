@@ -1,7 +1,8 @@
 import { waitUntil } from "@vercel/functions";
 import { NextRequest } from "next/server";
 import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
-import { analysisStatusMessage, isPendingAnalysisStatus, processAnalysisJob, shouldWakeAnalysisJob } from "@/lib/analysis/jobRunner";
+import { analysisStatusMessage, drainAnalysisQueue, isPendingAnalysisStatus, shouldWakeAnalysisJob } from "@/lib/analysis/jobRunner";
+import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
 import { reportSectionsSchema, type AnalyzeStatusResponse, type FaceReportRow } from "@/types/analysis";
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   if (isPendingAnalysisStatus(row.status) && shouldWakeAnalysisJob(row)) {
     waitUntil(
-      processAnalysisJob(row.id).catch((wakeError) =>
+      drainAnalysisQueue({ targetId: row.id }).catch((wakeError) =>
         logServiceEvent({
           req,
           reportId: row.id,
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
       reportId: row.id,
       status: "complete",
       message: analysisStatusMessage(row),
-      sections: reportSectionsSchema.parse(row.report_sections_json),
+      sections: postprocessReportSections(reportSectionsSchema.parse(row.report_sections_json), { gender: row.gender }),
       modelUsed: row.model_used ?? null,
     } satisfies AnalyzeStatusResponse);
   }
