@@ -1,36 +1,28 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { KakaoIcon } from "@/components/ui/KakaoIcon";
+import { loadKakaoSdk, shareKakaoFeed } from "@/lib/kakao/share";
 
 const DEFAULT_URL = "https://faceroast.vercel.app";
 
 export function PcUrlCopy() {
   const [pcUrl, setPcUrl] = useState(DEFAULT_URL);
-  const [copied, setCopied] = useState(false);
+  const [kakaoReady, setKakaoReady] = useState(false);
 
   useEffect(() => {
     setPcUrl(window.location.origin);
+    void loadKakaoSdk().then(setKakaoReady);
   }, []);
 
-  const copyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(pcUrl);
-    } catch {
-      const textarea = document.createElement("textarea");
-      textarea.value = pcUrl;
-      textarea.setAttribute("readonly", "");
-      textarea.style.position = "fixed";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      textarea.remove();
-    }
-
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+  const shareKakao = () => {
+    shareKakaoFeed({
+      title: "AI 얼평보고서",
+      description: "AI가 분석하는 내 얼굴 점수 - PC 웹캠으로 바로 시작",
+      imageUrl: `${pcUrl}/og-image.png`,
+      resultUrl: pcUrl,
+    });
   };
 
   return (
@@ -43,10 +35,13 @@ export function PcUrlCopy() {
           type="button"
           variant="ghost"
           className="h-9 shrink-0 px-3 text-xs"
-          icon={copied ? <Check className="h-4 w-4 text-accent-ok" /> : <Copy className="h-4 w-4" />}
-          onClick={copyUrl}
+          disabled={!kakaoReady}
+          aria-label="카카오톡으로 보내기"
+          title={kakaoReady ? "카카오톡으로 보내기" : "카카오톡 공유 사용 불가"}
+          icon={<KakaoIcon className="h-4 w-4 rounded-[4px]" />}
+          onClick={shareKakao}
         >
-          {copied ? "복사됨" : "복사"}
+          보내기
         </Button>
       </div>
     </div>
