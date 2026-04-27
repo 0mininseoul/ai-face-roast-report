@@ -51,7 +51,7 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
   const shareImageUrl = absoluteUrl(OG_IMAGE_PATH, baseUrl);
-  const mainCopy = sections.mainCopy;
+  const mainCopy = row.main_copy?.trim() || sections.mainCopy;
 
   return (
     <main className="min-h-screen">

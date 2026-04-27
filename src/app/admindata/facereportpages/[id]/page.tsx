@@ -36,11 +36,12 @@ export default async function AdminFaceReportPage({ params }: { params: { id: st
 
   const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), { gender: row.gender });
   const faceDataUrl = await downloadFaceImageDataUrl(supabase, row.face_image_path);
+  const mainCopy = row.main_copy?.trim() || sections.mainCopy;
 
   return (
     <main className="min-h-screen">
       <AdminHeader row={row} />
-      <MainCopy text={sections.mainCopy} />
+      <MainCopy text={mainCopy} />
       <FaceImage src={faceDataUrl} createdAt={row.created_at} />
       <DetailedReport sections={sections} />
     </main>
