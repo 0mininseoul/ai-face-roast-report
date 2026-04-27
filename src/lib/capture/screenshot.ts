@@ -39,6 +39,29 @@ export function captureVideoFrame(video: HTMLVideoElement, width = 1280, height 
   return canvas.toDataURL("image/jpeg", quality);
 }
 
+export function uploadDiagnosticVideoFrame(
+  video: HTMLVideoElement,
+  input: {
+    eventName: string;
+    sessionId: string;
+    reportId?: string | null;
+    payload?: Record<string, unknown>;
+  },
+) {
+  const imageBase64 = captureVideoFrame(video, 640, 360, 0.56);
+  return fetch("/api/analyze/diagnostic-frame", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: input.sessionId,
+      reportId: input.reportId ?? null,
+      eventName: input.eventName,
+      payload: input.payload ?? {},
+      imageBase64,
+    }),
+  }).catch(() => undefined);
+}
+
 function prepareVideoCanvases(root: HTMLElement): () => void {
   const scale = Math.min(window.devicePixelRatio || 1, 2);
   const replacements: Array<{ video: HTMLVideoElement; canvas: HTMLCanvasElement; nextSibling: ChildNode | null; parent: HTMLElement }> = [];

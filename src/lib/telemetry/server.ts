@@ -10,6 +10,11 @@ const OPERATIONAL_WARNING_EVENTS = new Set([
   "analysis_liveness_rejected",
   "analysis_daily_quota_exceeded",
   "analysis_non_live_input_detected",
+  "analysis_job_claim_skipped",
+  "analysis_diagnostic_frame_rate_limited",
+  "analysis_diagnostic_frame_rejected",
+  "face_sample_collection_waiting_long",
+  "face_landmarker_cpu_fallback_started",
   "feedback_rate_limited",
 ]);
 
@@ -24,6 +29,8 @@ const OPERATIONAL_ERROR_EVENTS = new Set([
   "analysis_report_failed",
   "analysis_client_request_failed",
   "analysis_client_prepare_failed",
+  "analysis_diagnostic_frame_store_failed",
+  "face_sample_collection_failed_no_landmarks",
   "feedback_store_failed",
 ]);
 

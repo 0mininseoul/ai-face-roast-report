@@ -2,24 +2,28 @@
 
 import { FaceLandmarker, FilesetResolver, type FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
-let singleton: Promise<FaceLandmarker> | null = null;
+export type FaceLandmarkerDelegate = "GPU" | "CPU";
 
-export async function getFaceLandmarker(): Promise<FaceLandmarker> {
-  if (!singleton) {
-    singleton = createFaceLandmarker();
+let singleton: Promise<FaceLandmarker> | null = null;
+let singletonDelegate: FaceLandmarkerDelegate | null = null;
+
+export async function getFaceLandmarker(delegate: FaceLandmarkerDelegate = "GPU"): Promise<FaceLandmarker> {
+  if (!singleton || singletonDelegate !== delegate) {
+    singletonDelegate = delegate;
+    singleton = createFaceLandmarker(delegate);
   }
   return singleton;
 }
 
 export type { FaceLandmarkerResult };
 
-async function createFaceLandmarker(): Promise<FaceLandmarker> {
+async function createFaceLandmarker(delegate: FaceLandmarkerDelegate): Promise<FaceLandmarker> {
   const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm");
   return FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath:
         "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-      delegate: "GPU",
+      delegate,
     },
     runningMode: "VIDEO",
     numFaces: 2,

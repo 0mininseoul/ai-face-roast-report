@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
 import { AnalysisCard } from "@/components/analyze/AnalysisCard";
 import { CardConnectors } from "@/components/analyze/CardConnectors";
 import { ControlBar } from "@/components/analyze/ControlBar";
@@ -20,8 +20,9 @@ import {
 } from "@/lib/analysis/sampling";
 import { MIN_LANDMARK_VARIANCE, computeLivenessSignal, isLivenessAcceptable } from "@/lib/analysis/liveness";
 import { getAnalysisProgress } from "@/lib/analysis/progress";
-import { captureVideoFrame, downloadElementScreenshot } from "@/lib/capture/screenshot";
+import { captureVideoFrame, downloadElementScreenshot, uploadDiagnosticVideoFrame } from "@/lib/capture/screenshot";
 import { averageLandmarks, computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
+import type { FaceLandmarkerDelegate } from "@/lib/facemesh/faceLandmarker";
 import { setMuted as setGlobalMuted } from "@/lib/sound/sfx";
 import { getClientDeviceId, getClientSessionId, logClientEvent } from "@/lib/telemetry/client";
 import { useAnalysisStream } from "@/hooks/useAnalysisStream";
@@ -33,6 +34,9 @@ const LOADING_CARD_REVEAL_INTERVAL_MS = 1450;
 const RESULT_CARD_REVEAL_INTERVAL_MS = 2600;
 const ANALYSIS_CAPTURE_SETTLE_MS = 800;
 const LIVENESS_WARNING_MS = 3500;
+const ZERO_SAMPLE_CPU_FALLBACK_MS = 12_000;
+const ZERO_SAMPLE_FAIL_MS = 24_000;
+const LANDMARK_LOSS_RESET_MS = 1_500;
 const LIVENESS_WARNING_TEXT = "카메라 앞에서 얼굴을 살짝 움직여 주세요";
 type CardSide = "left" | "right";
 type ConnectorPoint = { x: number; y: number };
@@ -66,6 +70,12 @@ function AnalyzeClient() {
   const firstLandmarkLoggedRef = useRef(false);
   const lastSampleLogRef = useRef(0);
   const longWaitLoggedRef = useRef(false);
+  const zeroSampleFallbackLoggedRef = useRef(false);
+  const zeroSampleFailureLoggedRef = useRef(false);
+  const cpuFallbackRecoveredLoggedRef = useRef(false);
+  const diagnosticCaptureSentRef = useRef(false);
+  const sampleCollectionStartedAtRef = useRef<number | null>(null);
+  const lastLandmarksSeenAtRef = useRef<number | null>(null);
   const lastLandmarkLostLogRef = useRef(0);
   const landmarkLossCountRef = useRef(0);
   const livenessWarningUntilRef = useRef(0);
@@ -80,11 +90,34 @@ function AnalyzeClient() {
   const [muted, setMuted] = useState(false);
   const [faceWarning, setFaceWarning] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
-  const { videoRef, status, error, start } = useCamera({ persistGlobal: true });
-  const { result, landmarks, isLoading } = useFaceLandmarker(videoRef, status === "ready");
+  const [faceLandmarkerDelegate, setFaceLandmarkerDelegate] = useState<FaceLandmarkerDelegate>("GPU");
+  const { videoRef, streamRef, status, error, start } = useCamera({ persistGlobal: true });
+  const { result, landmarks, isLoading } = useFaceLandmarker(videoRef, status === "ready", { delegate: faceLandmarkerDelegate });
   const logEvent = useCallback((eventName: string, payload?: Record<string, unknown>, reportId?: string | null, level: "debug" | "info" | "warn" | "error" = "info") => {
     logClientEvent({ eventName, payload, reportId: reportId ?? reportIdRef.current, level });
   }, []);
+  const faceDetectionDiagnostics = useCallback(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current ?? (typeof window !== "undefined" ? window.__aiFaceReportStream : null);
+    const track = stream?.getVideoTracks()[0] ?? null;
+
+    return {
+      cameraStatus: status,
+      detectorDelegate: faceLandmarkerDelegate,
+      videoReadyState: video?.readyState ?? null,
+      videoWidth: video?.videoWidth ?? null,
+      videoHeight: video?.videoHeight ?? null,
+      videoPaused: video?.paused ?? null,
+      videoEnded: video?.ended ?? null,
+      trackReadyState: track?.readyState ?? null,
+      trackMuted: track?.muted ?? null,
+      trackEnabled: track?.enabled ?? null,
+      trackWidth: track?.getSettings().width ?? null,
+      trackHeight: track?.getSettings().height ?? null,
+      trackFps: track?.getSettings().frameRate ?? null,
+      sampleCount: sampleRef.current.length,
+    };
+  }, [faceLandmarkerDelegate, status, streamRef, videoRef]);
   const handleAnalysisEvent = useCallback(
     (eventName: string, payload?: Record<string, unknown>, reportId?: string | null) => {
       if (reportId) reportIdRef.current = reportId;
@@ -93,6 +126,22 @@ function AnalyzeClient() {
     [logEvent],
   );
   const { state, start: startAnalysis } = useAnalysisStream({ onEvent: handleAnalysisEvent });
+  const uploadDiagnosticFrame = useCallback(
+    (eventName: string, payload?: Record<string, unknown>) => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+      void uploadDiagnosticVideoFrame(video, {
+        eventName,
+        sessionId: getClientSessionId(),
+        reportId: reportIdRef.current,
+        payload: {
+          ...(payload ?? {}),
+          ...faceDetectionDiagnostics(),
+        },
+      });
+    },
+    [faceDetectionDiagnostics, videoRef],
+  );
 
   useEffect(() => {
     if (gender !== "male" && gender !== "female") router.replace("/");
@@ -143,6 +192,7 @@ function AnalyzeClient() {
           );
           setSampleCount(0);
           sampleRef.current = [];
+          sampleCollectionStartedAtRef.current = Date.now();
           livenessWarningUntilRef.current = Date.now() + LIVENESS_WARNING_MS;
           setFaceWarning(LIVENESS_WARNING_TEXT);
           return false;
@@ -156,6 +206,7 @@ function AnalyzeClient() {
         if (!video || video.readyState < 2 || !faceVisibleRef.current || landmarkLossCountRef.current !== landmarkLossCountAtSettleStart) {
           startedRef.current = false;
           sampleRef.current = [];
+          sampleCollectionStartedAtRef.current = Date.now();
           setSampleCount(0);
           setFaceWarning("얼굴이 잘 보이도록 자세를 잡아주세요");
           logEvent("analysis_capture_settle_lost_face", { delayMs: ANALYSIS_CAPTURE_SETTLE_MS, trigger }, null, "warn");
@@ -200,14 +251,24 @@ function AnalyzeClient() {
 
   useEffect(() => {
     if (!landmarks) {
+      const now = Date.now();
+      const lastSeenAt = lastLandmarksSeenAtRef.current;
+      const lostForMs = lastSeenAt ? now - lastSeenAt : Number.POSITIVE_INFINITY;
       if (faceVisibleRef.current && shouldLogLandmarkLost(lastLandmarkLostLogRef.current)) {
         lastLandmarkLostLogRef.current = Date.now();
-        logEvent("face_landmarks_lost", { sampleCount: sampleRef.current.length }, null, "info");
+        logEvent("face_landmarks_lost", { lostForMs, sampleCount: sampleRef.current.length }, null, "info");
       }
+
+      if (lastSeenAt && lostForMs < LANDMARK_LOSS_RESET_MS) {
+        setFaceWarning("얼굴 추적이 흔들립니다");
+        return;
+      }
+
       if (faceVisibleRef.current) landmarkLossCountRef.current += 1;
       faceVisibleRef.current = false;
       sampleRef.current = [];
       setSampleCount(0);
+      lastSampleLogRef.current = 0;
       setFaceWarning("얼굴이 잘 보이도록 자세를 잡아주세요");
       return;
     }
@@ -215,11 +276,17 @@ function AnalyzeClient() {
     const faceCount = result?.faceLandmarks?.length ?? 1;
     const nextSamples = appendLandmarkSample(sampleRef.current, landmarks);
     const livenessWarning = Date.now() < livenessWarningUntilRef.current ? LIVENESS_WARNING_TEXT : null;
+    lastLandmarksSeenAtRef.current = Date.now();
     faceVisibleRef.current = true;
     lastLandmarkLostLogRef.current = 0;
     sampleRef.current = nextSamples;
     setSampleCount(nextSamples.length);
     setFaceWarning(faceCount > 1 ? "가장 큰 얼굴 1개만 분석합니다" : livenessWarning);
+
+    if (zeroSampleFallbackLoggedRef.current && faceLandmarkerDelegate === "CPU" && !cpuFallbackRecoveredLoggedRef.current) {
+      cpuFallbackRecoveredLoggedRef.current = true;
+      logEvent("face_landmarker_cpu_fallback_recovered", { ...faceDetectionDiagnostics(), sampleCount: nextSamples.length });
+    }
 
     if (!firstLandmarkLoggedRef.current) {
       firstLandmarkLoggedRef.current = true;
@@ -235,22 +302,53 @@ function AnalyzeClient() {
     if (canStartAnalysis(nextSamples.length, "target_samples")) {
       void beginAnalysis(nextSamples, "target_samples");
     }
-  }, [beginAnalysis, landmarks, logEvent, result]);
+  }, [beginAnalysis, faceDetectionDiagnostics, faceLandmarkerDelegate, landmarks, logEvent, result]);
 
   useEffect(() => {
-    if (status !== "ready" || startedRef.current) return;
-    longWaitLoggedRef.current = false;
-    logEvent("face_sample_collection_started", { targetSampleCount: TARGET_SAMPLE_COUNT, fallbackAfterMs: COLLECTION_TIMEOUT_MS });
+    if (status !== "ready") {
+      sampleCollectionStartedAtRef.current = null;
+      return;
+    }
+    if (startedRef.current || clientError) return;
 
-    const startedAt = Date.now();
+    if (!sampleCollectionStartedAtRef.current) {
+      sampleCollectionStartedAtRef.current = Date.now();
+      longWaitLoggedRef.current = false;
+      logEvent("face_sample_collection_started", { targetSampleCount: TARGET_SAMPLE_COUNT, fallbackAfterMs: COLLECTION_TIMEOUT_MS });
+    }
+
     const interval = window.setInterval(() => {
       if (startedRef.current) {
         window.clearInterval(interval);
         return;
       }
 
-      const elapsedMs = Date.now() - startedAt;
+      const elapsedMs = Date.now() - (sampleCollectionStartedAtRef.current ?? Date.now());
       const samples = sampleRef.current;
+      if (samples.length === 0 && elapsedMs >= ZERO_SAMPLE_CPU_FALLBACK_MS && faceLandmarkerDelegate === "GPU" && !zeroSampleFallbackLoggedRef.current) {
+        zeroSampleFallbackLoggedRef.current = true;
+        setFaceWarning("얼굴 인식 엔진을 재시작하고 있습니다");
+        logEvent("face_landmarker_cpu_fallback_started", { ...faceDetectionDiagnostics(), elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
+        if (!diagnosticCaptureSentRef.current) {
+          diagnosticCaptureSentRef.current = true;
+          uploadDiagnosticFrame("face_landmarker_cpu_fallback_started", { elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT });
+        }
+        setFaceLandmarkerDelegate("CPU");
+        return;
+      }
+
+      if (samples.length === 0 && elapsedMs >= ZERO_SAMPLE_FAIL_MS && faceLandmarkerDelegate === "CPU" && !zeroSampleFailureLoggedRef.current) {
+        zeroSampleFailureLoggedRef.current = true;
+        window.clearInterval(interval);
+        logEvent("face_sample_collection_failed_no_landmarks", { ...faceDetectionDiagnostics(), elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "error");
+        if (!diagnosticCaptureSentRef.current) {
+          diagnosticCaptureSentRef.current = true;
+          uploadDiagnosticFrame("face_sample_collection_failed_no_landmarks", { elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT });
+        }
+        setClientError("카메라 영상에서 얼굴을 인식하지 못했습니다. 얼굴이 화면 중앙에 보이도록 하고, 조명을 밝게 한 뒤 다시 시도해 주세요.");
+        return;
+      }
+
       if (elapsedMs >= COLLECTION_TIMEOUT_MS && canStartAnalysis(samples.length, "timeout_fallback")) {
         logEvent("face_sample_collection_timeout_fallback", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
         void beginAnalysis(samples, "timeout_fallback");
@@ -259,12 +357,16 @@ function AnalyzeClient() {
 
       if (elapsedMs >= LONG_WAIT_MS && !longWaitLoggedRef.current) {
         longWaitLoggedRef.current = true;
-        logEvent("face_sample_collection_waiting_long", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
+        logEvent("face_sample_collection_waiting_long", { ...faceDetectionDiagnostics(), elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
+        if (!diagnosticCaptureSentRef.current) {
+          diagnosticCaptureSentRef.current = true;
+          uploadDiagnosticFrame("face_sample_collection_waiting_long", { elapsedMs, sampleCount: samples.length, targetSampleCount: TARGET_SAMPLE_COUNT });
+        }
       }
     }, 500);
 
     return () => window.clearInterval(interval);
-  }, [beginAnalysis, logEvent, status]);
+  }, [beginAnalysis, clientError, faceDetectionDiagnostics, faceLandmarkerDelegate, logEvent, status, uploadDiagnosticFrame]);
 
   const progress = useMemo(
     () =>
@@ -503,9 +605,14 @@ function AnalyzeClient() {
             <AlertTriangle className="mx-auto h-10 w-10 text-accent-bad" />
             <h1 className="mt-5 text-2xl font-extrabold">분석을 진행할 수 없습니다</h1>
             <p className="mt-3 text-sm leading-6 text-text-muted">{clientError ?? state.error ?? error ?? "카메라 접근을 확인해 주세요."}</p>
-            <Button className="mt-6" onClick={() => router.push("/")}>
-              처음으로
-            </Button>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <Button icon={<RefreshCcw className="h-4 w-4" />} onClick={() => window.location.reload()}>
+                다시 시도
+              </Button>
+              <Button variant="ghost" onClick={() => router.push("/")}>
+                처음으로
+              </Button>
+            </div>
           </div>
         </div>
       )}
