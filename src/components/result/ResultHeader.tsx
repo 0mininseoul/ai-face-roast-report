@@ -38,7 +38,7 @@ export function ResultHeader({ shareImageUrl, resultUrl }: { shareImageUrl: stri
             onClick={() =>
               shareKakaoFeed({
                 title: "AI 얼평보고서 결과",
-                description: "오락용 AI 얼굴 분석 결과 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
+                description: "AI 얼굴 분석 결과 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
                 imageUrl: shareImageUrl,
                 resultUrl,
               })

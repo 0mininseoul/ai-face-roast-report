@@ -23,7 +23,7 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
-  const shareImageUrl = `${baseUrl}/og-image.png`;
+  const shareImageUrl = `${baseUrl}/brand/logo.png`;
   const mainCopy = pickMainCopy(row.gender, row.id);
 
   return (
