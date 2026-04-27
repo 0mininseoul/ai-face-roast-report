@@ -1,6 +1,6 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
-import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { DetailedReport } from "@/components/result/DetailedReport";
 import { FaceImage } from "@/components/result/FaceImage";
@@ -9,11 +9,25 @@ import { ResultHeader } from "@/components/result/ResultHeader";
 import { StopCameraOnMount } from "@/components/result/StopCameraOnMount";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { absoluteUrl, OG_IMAGE_PATH, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
+import { getRequestOrigin } from "@/lib/siteUrl";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { reportSectionsSchema, type FaceReportRow } from "@/types/analysis";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+  return {
+    ...socialMetadata({
+      baseUrl: getRequestOrigin(),
+      path: `/result/${params.id}`,
+      title: RESULT_TITLE,
+      description: RESULT_DESCRIPTION,
+    }),
+    title: RESULT_TITLE,
+  };
+}
 
 export default async function ResultPage({ params }: { params: { id: string } }) {
   noStore();
@@ -32,7 +46,7 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
-  const shareImageUrl = `${baseUrl}/brand/logo.png`;
+  const shareImageUrl = absoluteUrl(OG_IMAGE_PATH, baseUrl);
   const mainCopy = row.main_copy ?? sections.mainCopy;
 
   return (
@@ -85,21 +99,4 @@ function backfillStoredReportSections(input: unknown) {
   }
 
   return { ...report, impression: nextImpression };
-}
-
-function getRequestOrigin() {
-  const headerList = headers();
-  const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
-  if (host) {
-    const protocol = headerList.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
-    return `${protocol}://${host}`;
-  }
-
-  const explicit = process.env.NEXT_PUBLIC_BASE_URL;
-  if (explicit && !explicit.includes("localhost")) return explicit.replace(/\/$/, "");
-
-  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
-  if (vercelHost) return `https://${vercelHost}`;
-
-  return explicit ?? "http://localhost:3000";
 }

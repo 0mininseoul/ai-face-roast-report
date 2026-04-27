@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { KakaoIcon } from "@/components/ui/KakaoIcon";
 import { loadKakaoSdk, shareKakaoFeed } from "@/lib/kakao/share";
+import { OG_IMAGE_PATH } from "@/lib/siteMetadata";
 
 const DEFAULT_URL = "https://faceroast.vercel.app";
 
@@ -20,7 +21,7 @@ export function PcUrlCopy() {
     shareKakaoFeed({
       title: "AI 얼평보고서",
       description: "AI가 분석하는 내 얼굴 점수 - PC 웹캠으로 바로 시작",
-      imageUrl: `${pcUrl}/og-image.png`,
+      imageUrl: `${pcUrl}${OG_IMAGE_PATH}`,
       resultUrl: pcUrl,
     });
   };

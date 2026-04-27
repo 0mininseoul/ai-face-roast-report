@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const MOBILE_RE = /Mobi|Android|iPhone|iPad/i;
+const PUBLIC_FILE_RE = /\.(?:png|jpe?g|webp|gif|svg|ico|txt|xml|json|webmanifest|woff2?)$/i;
 
 export function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
@@ -14,8 +15,7 @@ export function middleware(req: NextRequest) {
     path.startsWith("/_next") ||
     path.startsWith("/fonts") ||
     path.startsWith("/sfx") ||
-    path === "/og-image.png" ||
-    path === "/favicon.ico";
+    PUBLIC_FILE_RE.test(path);
 
   if (MOBILE_RE.test(ua) && !allow) {
     return NextResponse.redirect(new URL("/mobile-only", req.url));

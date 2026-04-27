@@ -42,6 +42,7 @@ corepack pnpm build
 
 ## Assets
 
-- `public/og-image.png`: 1200x630 OpenGraph 이미지
+- `public/og-image.jpg`: 1200x630 OpenGraph 공유 이미지
+- `public/og-image.png`: OpenGraph 이미지 원본
 - `public/fonts/PretendardVariable.woff2`: self-host Pretendard
 - `public/sfx/*.mp3`: 선택 효과음. 파일을 추가한 뒤 `NEXT_PUBLIC_ENABLE_SFX=true`로 켜면 재생됩니다.
