@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Clock3, Copy, MessageCircle, RotateCcw } from "lucide-react";
+import { Clock3, Copy, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { KakaoIcon } from "@/components/ui/KakaoIcon";
 import { Logo } from "@/components/ui/Logo";
 import { loadKakaoSdk, shareKakaoFeed } from "@/lib/kakao/share";
 
@@ -33,7 +34,7 @@ export function ResultHeader({ shareImageUrl, resultUrl }: { shareImageUrl: stri
             disabled={!kakaoReady}
             aria-label="카카오톡 공유"
             title={kakaoReady ? "카카오톡 공유 - 얼굴 사진 미리보기 제외" : "카카오톡 공유 사용 불가"}
-            icon={<MessageCircle className="h-4 w-4" />}
+            icon={<KakaoIcon className="h-5 w-5 rounded-[5px]" />}
             onClick={() =>
               shareKakaoFeed({
                 title: "AI 얼평보고서 결과",

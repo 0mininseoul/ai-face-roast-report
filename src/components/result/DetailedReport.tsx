@@ -63,12 +63,9 @@ export function DetailedReport({ sections }: { sections: ReportSections }) {
         <p className="whitespace-pre-line text-lg font-semibold leading-9 text-text-primary">{sections.conclusion}</p>
       </Panel>
 
-      <footer className="text-center text-xs leading-5 text-text-faint md:col-span-2">
-        <span className="block">본 보고서는 AI가 통계적, 기하학적 분석을 통해 생성한 결과이며, 오락적 목적으로만 사용되어야 합니다.</span>
-        <span className="block">본 분석은 오락적 목적으로 생성되었으며, 의학적 또는 심리학적 진단을 대체할 수 없습니다.</span>
-        <span className="block">결과는 인공지능 모델의 주관적 해석을 포함하며, 과학적 근거가 부족할 수 있습니다.</span>
-        <span className="block">AI가 생성한 풍자 표현이며 사실 판단이나 사실 진술이 아닙니다.</span>
-        <span className="block">{sections.meta.complianceText}</span>
+      <footer className="space-y-1 pt-2 text-center text-xs leading-5 text-text-faint md:col-span-2">
+        <p>본 보고서는 AI가 통계적·기하학적 분석으로 생성한 풍자 결과이며, 사실 판단이나 진술이 아닙니다.</p>
+        <p>의학적·심리학적 진단을 대체할 수 없으며, 모델의 주관적 해석을 포함해 과학적 근거가 부족할 수 있습니다.</p>
       </footer>
     </section>
   );
