@@ -93,6 +93,7 @@ export interface FaceReportRow {
   report_sections_json: ReportSections | null;
   main_copy: string | null;
   live_feed_json: string[];
+  app_user_id: string | null;
   user_agent: string | null;
   ip_hash: string | null;
   age_bucket: AgeBucket | null;
