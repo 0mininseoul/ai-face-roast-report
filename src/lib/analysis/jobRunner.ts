@@ -196,6 +196,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
     } catch (error) {
       errors.push(error);
       const isPrimaryAttempt = index === 0 && model === MODEL_ANALYSIS;
+      const hasMoreFallbackModels = index < modelChain.length - 1;
       const canRetryPrimaryLater =
         isPrimaryAttempt &&
         isRetryableAnalysisError(error) &&
@@ -206,7 +207,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
         reportId: row.id,
         eventName: canRetryPrimaryLater ? "analysis_pro_retry_scheduled" : "analysis_ai_attempt_failed",
         phase: "server_worker",
-        level: canRetryPrimaryLater ? "warn" : "error",
+        level: canRetryPrimaryLater || hasMoreFallbackModels ? "warn" : "error",
         payload: {
           model,
           attempt: index + 1,
@@ -214,6 +215,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
           message: analysisErrorMessage(error),
           providerMessage: extractErrorText(error),
           canRetryPrimaryLater,
+          hasMoreFallbackModels,
           elapsedMs: Date.now() - startedAt,
         },
       });
@@ -225,7 +227,16 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
     }
   }
 
-  await markJobFailed(row.id, errors[errors.length - 1] ?? new Error("Unknown analysis error"), row.model_used);
+  const finalError = errors[errors.length - 1] ?? new Error("Unknown analysis error");
+  await logServiceEvent({
+    sessionId: context.sessionId,
+    reportId: row.id,
+    eventName: "analysis_report_failed",
+    phase: "server_worker",
+    level: "error",
+    payload: { message: analysisErrorMessage(finalError), providerMessage: extractErrorText(finalError) },
+  });
+  await markJobFailed(row.id, finalError, row.model_used);
   return "failed";
 }
 

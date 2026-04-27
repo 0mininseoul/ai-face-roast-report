@@ -62,6 +62,7 @@ function AnalyzeClient() {
   const firstLandmarkLoggedRef = useRef(false);
   const lastSampleLogRef = useRef(0);
   const longWaitLoggedRef = useRef(false);
+  const lastLandmarkLostLogRef = useRef(0);
   const reportIdRef = useRef<string | null>(null);
   const sampleRef = useRef<Landmark[][]>([]);
   const [sampleCount, setSampleCount] = useState(0);
@@ -101,7 +102,7 @@ function AnalyzeClient() {
   }, [start]);
 
   useEffect(() => {
-    logEvent("camera_status_changed", { status, hasError: Boolean(error) }, null, status === "error" || status === "denied" ? "error" : "info");
+    logEvent("camera_status_changed", { status, hasError: Boolean(error) }, null, status === "error" ? "warn" : "info");
   }, [error, logEvent, status]);
 
   useEffect(() => {
@@ -149,7 +150,10 @@ function AnalyzeClient() {
 
   useEffect(() => {
     if (!landmarks) {
-      if (faceVisibleRef.current) logEvent("face_landmarks_lost", { sampleCount: sampleRef.current.length }, null, "warn");
+      if (faceVisibleRef.current && shouldLogLandmarkLost(lastLandmarkLostLogRef.current)) {
+        lastLandmarkLostLogRef.current = Date.now();
+        logEvent("face_landmarks_lost", { sampleCount: sampleRef.current.length }, null, "info");
+      }
       faceVisibleRef.current = false;
       sampleRef.current = [];
       setSampleCount(0);
@@ -160,6 +164,7 @@ function AnalyzeClient() {
     const faceCount = result?.faceLandmarks?.length ?? 1;
     const nextSamples = appendLandmarkSample(sampleRef.current, landmarks);
     faceVisibleRef.current = true;
+    lastLandmarkLostLogRef.current = 0;
     sampleRef.current = nextSamples;
     setSampleCount(nextSamples.length);
     setFaceWarning(faceCount > 1 ? "가장 큰 얼굴 1개만 분석합니다" : null);
@@ -490,6 +495,10 @@ function getCardSide(index: number): CardSide {
 function getCardProgress(globalPercent: number, index: number) {
   const value = globalPercent - index * 4 + 8;
   return Math.max(7, Math.min(96, value));
+}
+
+function shouldLogLandmarkLost(lastLoggedAt: number) {
+  return lastLoggedAt === 0 || Date.now() - lastLoggedAt >= 10_000;
 }
 
 function areConnectorSourcesEqual(previous: Record<string, ConnectorPoint>, next: Record<string, ConnectorPoint>) {

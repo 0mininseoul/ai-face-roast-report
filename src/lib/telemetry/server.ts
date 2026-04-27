@@ -5,6 +5,24 @@ import { ipFromRequest, ipHash } from "@/lib/ratelimit";
 
 type ServiceEventLevel = "debug" | "info" | "warn" | "error";
 
+const OPERATIONAL_WARNING_EVENTS = new Set([
+  "analysis_rate_limited",
+  "feedback_rate_limited",
+]);
+
+const OPERATIONAL_ERROR_EVENTS = new Set([
+  "analysis_report_create_failed",
+  "analysis_image_upload_failed",
+  "analysis_report_update_failed",
+  "analysis_background_start_failed",
+  "analysis_status_wake_failed",
+  "analysis_job_failed_unhandled",
+  "analysis_report_failed",
+  "analysis_client_request_failed",
+  "analysis_client_prepare_failed",
+  "feedback_store_failed",
+]);
+
 export interface ServiceEventInput {
   eventName: string;
   req?: Request;
@@ -49,14 +67,30 @@ export async function logServiceEvent(input: ServiceEventInput): Promise<void> {
 }
 
 function writeConsoleLog(event: Record<string, unknown>) {
+  if (process.env.VERBOSE_SERVICE_EVENTS !== "true" && !shouldWriteOperationalConsoleLog(event)) return;
+
   const line = `[service-event] ${JSON.stringify({ service: "ai-face-report", ...event })}`;
-  if (event.level === "error") {
+  const consoleLevel = consoleLevelForEvent(event);
+  if (consoleLevel === "error") {
     console.error(line);
-  } else if (event.level === "warn") {
+  } else if (consoleLevel === "warn") {
     console.warn(line);
   } else {
     console.info(line);
   }
+}
+
+function shouldWriteOperationalConsoleLog(event: Record<string, unknown>): boolean {
+  const eventName = typeof event.event_name === "string" ? event.event_name : "";
+  return OPERATIONAL_ERROR_EVENTS.has(eventName) || OPERATIONAL_WARNING_EVENTS.has(eventName);
+}
+
+function consoleLevelForEvent(event: Record<string, unknown>): ServiceEventLevel {
+  const eventName = typeof event.event_name === "string" ? event.event_name : "";
+  if (OPERATIONAL_ERROR_EVENTS.has(eventName)) return "error";
+  if (OPERATIONAL_WARNING_EVENTS.has(eventName)) return "warn";
+  if (event.level === "debug" || event.level === "info" || event.level === "warn" || event.level === "error") return event.level;
+  return "info";
 }
 
 function normalizeUuid(value: string | null | undefined): string | null {
