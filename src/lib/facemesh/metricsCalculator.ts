@@ -1,4 +1,12 @@
-import type { FaceBox, FaceMetrics, Landmark } from "@/types/analysis";
+import type { FaceBox, FaceMetrics, ForeheadClassification, Landmark } from "@/types/analysis";
+
+// MediaPipe FaceMesh underestimates the forehead because its top landmark sits
+// roughly 1.5~2cm above the brow rather than at the hairline. Across the first
+// 18 production reports areaPct landed in 11.8%~23.3% (avg 16, σ 2.75), so the
+// thirds-based 33% reference is unreachable. These thresholds split that real
+// distribution into narrow / average / wide instead of comparing to the myth.
+const FOREHEAD_NARROW_BELOW = 14;
+const FOREHEAD_WIDE_ABOVE = 18;
 
 const IDX = {
   chin: 152,
@@ -87,10 +95,14 @@ export function computeFaceMetrics(landmarks: Landmark[]): FaceMetrics {
     faceAspectRatio: round(faceAspectRatio, 3),
     eyeSpacing: round(distance(point(landmarks, IDX.leftEyeInner), point(landmarks, IDX.rightEyeInner)) / ipd, 3),
     facialAngleDeg: round(angle(point(landmarks, IDX.forehead), point(landmarks, IDX.noseTip), point(landmarks, IDX.chin)), 1),
-    forehead: {
-      areaPct: round(clamp(upperThird * 100, 0, 100), 1),
-      brow: round(Math.abs(point(landmarks, IDX.browLeft).y - point(landmarks, IDX.browRight).y) * mm, 1),
-    },
+    forehead: (() => {
+      const areaPct = round(clamp(upperThird * 100, 0, 100), 1);
+      return {
+        areaPct,
+        brow: round(Math.abs(point(landmarks, IDX.browLeft).y - point(landmarks, IDX.browRight).y) * mm, 1),
+        classification: classifyForehead(areaPct),
+      };
+    })(),
     eyes: {
       leftToRightDeltaMm: round(eyeDelta * mm, 1),
       outerCantalAngleDeg: round(
@@ -166,6 +178,12 @@ function computeFifths(landmarks: Landmark[], box: FaceBox): number[] {
   const segments = points.slice(1).map((p, i) => Math.max(p - points[i]!, 0.0001));
   const total = segments.reduce((sum, value) => sum + value, 0);
   return segments.map((value) => value / total);
+}
+
+function classifyForehead(areaPct: number): ForeheadClassification {
+  if (areaPct < FOREHEAD_NARROW_BELOW) return "narrow";
+  if (areaPct > FOREHEAD_WIDE_ABOVE) return "wide";
+  return "average";
 }
 
 function point(landmarks: Landmark[], index: number): Landmark {

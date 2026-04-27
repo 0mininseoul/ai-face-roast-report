@@ -15,6 +15,8 @@ export interface FaceBox {
   height: number;
 }
 
+export type ForeheadClassification = "narrow" | "average" | "wide";
+
 export interface FaceMetrics {
   asymmetryIndex: number;
   phiRatioCompliance: number;
@@ -23,7 +25,7 @@ export interface FaceMetrics {
   faceAspectRatio: number;
   eyeSpacing: number;
   facialAngleDeg: number;
-  forehead: { areaPct: number; brow: number };
+  forehead: { areaPct: number; brow: number; classification: ForeheadClassification };
   eyes: { leftToRightDeltaMm: number; outerCantalAngleDeg: number };
   nose: { lengthMm: number; widthMm: number; columellaAngleDeg: number };
   mouth: { upperLowerLipRatio: number; philtrumRatioPct: number; cornerAngleDeg: number };
