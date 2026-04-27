@@ -10,6 +10,10 @@ export function analysisErrorMessage(error: unknown): string {
     return "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.";
   }
 
+  if (normalized.includes("abort") || normalized.includes("timeout") || normalized.includes("time budget") || normalized.includes("time_budget") || normalized.includes("deadline")) {
+    return "AI 분석 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.";
+  }
+
   if (normalized.includes("missing gemini_api_key") || normalized.includes("api key")) {
     return "서비스 설정 문제로 분석을 진행할 수 없습니다.";
   }
@@ -19,7 +23,18 @@ export function analysisErrorMessage(error: unknown): string {
 
 export function isRetryableAnalysisError(error: unknown): boolean {
   const normalized = extractErrorText(error).toLowerCase();
-  return normalized.includes("high demand") || normalized.includes("unavailable") || normalized.includes("service unavailable") || normalized.includes("503") || normalized.includes("429");
+  return (
+    normalized.includes("high demand") ||
+    normalized.includes("unavailable") ||
+    normalized.includes("service unavailable") ||
+    normalized.includes("503") ||
+    normalized.includes("429") ||
+    normalized.includes("abort") ||
+    normalized.includes("timeout") ||
+    normalized.includes("time budget") ||
+    normalized.includes("time_budget") ||
+    normalized.includes("deadline")
+  );
 }
 
 export function extractErrorText(error: unknown): string {

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { getGenAi, MODEL_ANALYSIS } from "@/lib/gemini/client";
+import { getGenAi, MODEL_ANALYSIS, MODEL_ANALYSIS_FAST } from "@/lib/gemini/client";
+import { buildAnalysisModelChain } from "@/lib/gemini/modelSelection";
 import { buildAnalyzeUserPrompt } from "@/lib/gemini/promptText";
 import { readAnalyzeSystemPrompt } from "@/lib/gemini/prompts";
 import { normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
@@ -14,7 +15,9 @@ import type { AnalyzeRequestBody, AnalyzeSseEvent, ReportSections } from "@/type
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const ANALYSIS_RETRY_DELAYS_MS = [1200, 2800, 5200, 8500];
+const ANALYSIS_STREAM_BUDGET_MS = 45_000;
+const ANALYSIS_ATTEMPT_TIMEOUT_MS = 22_000;
+const STALE_ANALYSIS_MS = 2 * 60_000;
 
 export async function POST(req: NextRequest) {
   const ip = ipFromRequest(req);
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
   });
 
   const supabase = getServerSupabase();
+  await markStaleAnalyzingReports(supabase);
   const hashedIp = await ipHash(ip);
   const userAgent = req.headers.get("user-agent") ?? "";
 
@@ -160,14 +164,21 @@ export async function POST(req: NextRequest) {
 
         const ai = getGenAi();
         const systemInstruction = await readAnalyzeSystemPrompt();
+        const modelChain = buildAnalysisModelChain({
+          primaryModel: MODEL_ANALYSIS,
+          fastModel: MODEL_ANALYSIS_FAST,
+        });
         await record("analysis_ai_stream_started", {
-          model: MODEL_ANALYSIS,
+          models: modelChain,
+          primaryModel: MODEL_ANALYSIS,
+          fastModel: MODEL_ANALYSIS_FAST,
           promptChars: systemInstruction.length,
         });
         const { raw, chunkCount } = await streamAnalysisWithRetry({
-          createStream: () =>
+          models: modelChain,
+          createStream: ({ model, abortSignal }) =>
             ai.models.generateContentStream({
-              model: MODEL_ANALYSIS,
+              model,
               contents: [
                 {
                   role: "user",
@@ -182,6 +193,7 @@ export async function POST(req: NextRequest) {
                 responseMimeType: "application/json",
                 responseJsonSchema: REPORT_RESPONSE_JSON_SCHEMA,
                 temperature: 0.95,
+                abortSignal,
               },
             }),
           send,
@@ -239,34 +251,55 @@ export async function POST(req: NextRequest) {
 }
 
 async function streamAnalysisWithRetry({
+  models,
   createStream,
   send,
   record,
   maskRawChunks = false,
 }: {
-  createStream: () => Promise<AsyncIterable<{ text?: string }>>;
+  models: string[];
+  createStream: (attempt: { model: string; abortSignal: AbortSignal }) => Promise<AsyncIterable<{ text?: string }>>;
   send: (event: AnalyzeSseEvent) => void;
   record: (eventName: string, payload?: Record<string, unknown>, level?: "debug" | "info" | "warn" | "error") => Promise<void>;
   maskRawChunks?: boolean;
 }) {
   let lastError: unknown = null;
-  const maxAttempts = ANALYSIS_RETRY_DELAYS_MS.length + 1;
+  const startedAt = Date.now();
+  const maxAttempts = models.length;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     let raw = "";
     let chunkCount = 0;
+    const model = models[attempt]!;
+    const elapsedMs = Date.now() - startedAt;
+    const remainingBudgetMs = ANALYSIS_STREAM_BUDGET_MS - elapsedMs;
+
+    if (remainingBudgetMs < 5_000) {
+      lastError = new Error("analysis_time_budget_exceeded");
+      break;
+    }
+
+    const abortController = new AbortController();
+    const timeoutMs = Math.min(ANALYSIS_ATTEMPT_TIMEOUT_MS, remainingBudgetMs - 1_000);
+    const timeout = windowlessSetTimeout(() => abortController.abort(), timeoutMs);
 
     try {
-      await record("analysis_ai_attempt_started", { attempt: attempt + 1 });
+      await record("analysis_ai_attempt_started", {
+        attempt: attempt + 1,
+        maxAttempts,
+        model,
+        timeoutMs,
+        remainingBudgetMs,
+      });
       if (attempt > 0) {
         send({
           type: "status",
-          message: `AI 분석 응답이 지연되어 재시도 중입니다 (${attempt + 1}/${maxAttempts})`,
+          message: `AI 분석 응답이 지연되어 다른 분석 모델로 전환합니다 (${attempt + 1}/${maxAttempts})`,
           attempt: attempt + 1,
           maxAttempts,
         });
       }
-      const response = await createStream();
+      const response = await createStream({ model, abortSignal: abortController.signal });
 
       for await (const chunk of response) {
         const text = chunk.text ?? "";
@@ -277,37 +310,32 @@ async function streamAnalysisWithRetry({
         void record("analysis_ai_chunk", { attempt: attempt + 1, chunkCount, chunkChars: text.length, totalChars: raw.length }, "debug");
       }
 
+      windowlessClearTimeout(timeout);
+      if (!raw.trim()) throw new Error("Empty analysis response");
       return { raw, chunkCount };
     } catch (error) {
+      windowlessClearTimeout(timeout);
       lastError = error;
-      const canRetry = chunkCount === 0 && attempt < ANALYSIS_RETRY_DELAYS_MS.length && isRetryableAnalysisError(error);
+      const canRetry = chunkCount === 0 && attempt < maxAttempts - 1 && isRetryableAnalysisError(error);
       await record(
         canRetry ? "analysis_ai_retry_scheduled" : "analysis_ai_attempt_failed",
-        { attempt: attempt + 1, message: analysisErrorMessage(error), providerMessage: extractErrorText(error), canRetry },
+        {
+          attempt: attempt + 1,
+          maxAttempts,
+          model,
+          message: analysisErrorMessage(error),
+          providerMessage: extractErrorText(error),
+          canRetry,
+          elapsedMs: Date.now() - startedAt,
+        },
         canRetry ? "warn" : "error",
       );
 
       if (!canRetry) break;
-      const delayMs = withJitter(ANALYSIS_RETRY_DELAYS_MS[attempt]!);
-      send({
-        type: "status",
-        message: `AI 분석 응답이 지연되어 ${Math.ceil(delayMs / 1000)}초 뒤 자동 재시도합니다 (${attempt + 2}/${maxAttempts})`,
-        attempt: attempt + 2,
-        maxAttempts,
-      });
-      await sleep(delayMs);
     }
   }
 
   throw lastError ?? new Error("Unknown analysis error");
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function withJitter(ms: number) {
-  return Math.round(ms + Math.random() * 700);
 }
 
 function stripDataUrl(input: string): string {
@@ -317,4 +345,17 @@ function stripDataUrl(input: string): string {
 function parseReport(raw: string): ReportSections {
   const trimmed = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   return normalizeGeminiReport(JSON.parse(trimmed));
+}
+
+async function markStaleAnalyzingReports(supabase: ReturnType<typeof getServerSupabase>) {
+  const staleBefore = new Date(Date.now() - STALE_ANALYSIS_MS).toISOString();
+  await supabase.from("face_reports").update({ status: "failed" }).eq("status", "analyzing").lt("created_at", staleBefore);
+}
+
+function windowlessSetTimeout(callback: () => void, ms: number) {
+  return globalThis.setTimeout(callback, ms);
+}
+
+function windowlessClearTimeout(timeout: ReturnType<typeof setTimeout>) {
+  globalThis.clearTimeout(timeout);
 }

@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const MODEL_ANALYSIS = process.env.GEMINI_ANALYSIS_MODEL ?? "gemini-2.5-pro";
+export const MODEL_ANALYSIS_FAST = process.env.GEMINI_ANALYSIS_FAST_MODEL ?? "gemini-2.5-flash-lite";
 
 let cached: GoogleGenAI | null = null;
 
