@@ -30,6 +30,30 @@ describe("analyze system prompt guardrails", () => {
     expect(prompt).toContain("로스팅은 약하게 만들 필요가 없습니다");
   });
 
+  it("prevents praise-only wrapping in part comments", () => {
+    expect(prompt).toContain("좋은 수치나 깔끔한 부위가 있더라도 칭찬으로 포장하지 않습니다");
+    expect(prompt).toContain("각 comment는 최소 하나 이상의 부정적 평가를 포함합니다");
+    expect(prompt).toContain("단독 칭찬으로 끝나는 문장은 금지합니다");
+  });
+
+  it("allows stronger profanity for under-35 male reports", () => {
+    expect(prompt).toContain("남성 선택 시 `씨발`, `존나`, `좆`, `좆됐네 ㅋㅋ`, `와꾸`, `개박살`");
+    expect(prompt).toContain("그 장점 하나로 전체 와꾸가 살아나지는 않는다");
+    expect(prompt).toContain("결론이 칭찬, 응원, 자기계발 조언으로 마무리되면 실패입니다");
+  });
+
+  it("keeps over-35 polite while allowing direct aging and hairline roasting", () => {
+    expect(prompt).toContain("정중한 어미는 유지하되, 내용은 순화하지 않습니다");
+    expect(prompt).toContain("단체 사진에서 뒤로 빠지는 편이 낫다");
+    expect(prompt).toContain("노화·탈모·헤어라인·처짐·주름·피부결도 조롱할 수 있습니다");
+    expect(prompt).toContain("의료 진단처럼 단정하지 말고");
+  });
+
+  it("allows backhanded encouragement when it is still a roast", () => {
+    expect(prompt).toContain("응원이나 위로처럼 보이는 문장을 쓰더라도 내용은 사실상 조롱이어야 합니다");
+    expect(prompt).toContain("자신감은 가지셔도 되지만 사진은 남기지 않는 편이 좋겠습니다");
+  });
+
   it("bans 씨발 for female-selected users", () => {
     expect(prompt).toContain("여성 선택 시 디시/일베식 말투와 과한 남초 은어는 금지합니다");
     expect(prompt).toContain("`~노`, `하노`, `와꾸`");
