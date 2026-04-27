@@ -5,7 +5,7 @@
   "crons": [
     {
       "path": "/api/analyze/drain",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
