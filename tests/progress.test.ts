@@ -12,7 +12,8 @@ describe("analysis progress", () => {
     expect(progress({ isModelLoading: true }).label).toBe("얼굴 인식 모델 로딩");
     expect(progress({ sampleCount: 9 }).percent).toBe(36);
     expect(progress({ hasStarted: true }).percent).toBe(54);
-    expect(progress({ hasStarted: true, hasReportId: true, rawChars: 2600 }).percent).toBe(75);
+    expect(progress({ hasStarted: true, hasReportId: true, jobStatus: "queued" }).percent).toBe(60);
+    expect(progress({ hasStarted: true, hasReportId: true, jobStatus: "processing", pollCount: 6 }).percent).toBe(80);
     expect(progress({ hasStarted: true, hasReportId: true, isComplete: true }).percent).toBe(100);
   });
 });

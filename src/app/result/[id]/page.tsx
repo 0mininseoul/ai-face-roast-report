@@ -13,7 +13,7 @@ import { alignUserFacingAgeMentions } from "@/lib/analysis/reportPostprocess";
 import { absoluteUrl, OG_IMAGE_PATH, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
 import { getRequestOrigin } from "@/lib/siteUrl";
 import { getServerSupabase } from "@/lib/supabase/server";
-import { reportSectionsSchema, type FaceReportRow } from "@/types/analysis";
+import { reportSectionsSchema, type FaceReportRow, type FaceReportStatus } from "@/types/analysis";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -39,7 +39,7 @@ export default async function ResultPage({ params }: { params: { id: string } })
 
   const row = data as FaceReportRow;
   if (new Date(row.expires_at).getTime() <= Date.now()) redirect("/result/expired");
-  if (row.status === "analyzing") return <PendingResultPage />;
+  if (isPendingResultStatus(row.status)) return <PendingResultPage status={row.status} retryAfter={row.retry_after ?? null} />;
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) notFound();
 
   const sections = alignUserFacingAgeMentions(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)));
@@ -61,7 +61,16 @@ export default async function ResultPage({ params }: { params: { id: string } })
   );
 }
 
-function PendingResultPage() {
+function PendingResultPage({ status, retryAfter }: { status: FaceReportStatus; retryAfter: string | null }) {
+  const message =
+    status === "queued"
+      ? "분석 대기열에서 순서를 기다리고 있습니다."
+      : status === "retrying"
+        ? retryAfter
+          ? "Pro 모델 응답이 지연되어 잠시 후 다시 시도합니다."
+          : "정밀 분석 재시도를 준비하고 있습니다."
+        : "보고서 생성을 진행 중입니다.";
+
   return (
     <main className="grid min-h-screen place-items-center px-8">
       <meta httpEquiv="refresh" content="3" />
@@ -71,13 +80,17 @@ function PendingResultPage() {
         </div>
         <p className="text-xs font-black uppercase tracking-[0.14em] text-text-muted">Analysis in progress</p>
         <h1 className="mt-3 text-3xl font-black">보고서를 생성 중입니다</h1>
-        <p className="mt-4 leading-7 text-text-muted">잠시 후 자동으로 다시 확인합니다. 완료 전 링크를 열어도 더 이상 404로 고정되지 않습니다.</p>
+        <p className="mt-4 leading-7 text-text-muted">{message} 잠시 후 자동으로 다시 확인합니다.</p>
         <Link className="mt-8 inline-block" href="">
           <Button>다시 확인</Button>
         </Link>
       </section>
     </main>
   );
+}
+
+function isPendingResultStatus(status: FaceReportStatus): boolean {
+  return status === "queued" || status === "processing" || status === "retrying" || status === "analyzing";
 }
 
 function backfillStoredReportSections(input: unknown) {

@@ -218,9 +218,11 @@ function AnalyzeClient() {
         sampleCount,
         rawChars: state.raw.length,
         hasReportId: Boolean(state.reportId),
+        jobStatus: state.jobStatus,
+        pollCount: state.pollCount,
         isComplete: state.isComplete,
       }),
-    [isLoading, sampleCount, state.isComplete, state.raw.length, state.reportId, status],
+    [isLoading, sampleCount, state.isComplete, state.jobStatus, state.pollCount, state.raw.length, state.reportId, status],
   );
   const cards = useMemo(() => buildCards(state.sections), [state.sections]);
   const loadingCards = useMemo(() => buildCards(null), []);

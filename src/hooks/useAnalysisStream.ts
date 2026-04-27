@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { analysisErrorMessage } from "@/lib/analysis/errors";
-import type { AnalyzeRequestBody, AnalyzeSseEvent, ReportSections } from "@/types/analysis";
+import type { AnalyzeRequestBody, AnalyzeStartResponse, AnalyzeStatusResponse, FaceReportStatus, ReportSections } from "@/types/analysis";
 
 export interface AnalysisStreamState {
   reportId: string | null;
@@ -10,6 +10,10 @@ export interface AnalysisStreamState {
   sections: ReportSections | null;
   error: string | null;
   statusMessage: string | null;
+  jobStatus: FaceReportStatus | null;
+  attemptCount: number;
+  modelUsed: string | null;
+  pollCount: number;
   isStreaming: boolean;
   isComplete: boolean;
 }
@@ -20,6 +24,10 @@ const initial: AnalysisStreamState = {
   sections: null,
   error: null,
   statusMessage: null,
+  jobStatus: null,
+  attemptCount: 0,
+  modelUsed: null,
+  pollCount: 0,
   isStreaming: false,
   isComplete: false,
 };
@@ -28,12 +36,23 @@ interface AnalysisStreamOptions {
   onEvent?: (eventName: string, payload?: Record<string, unknown>, reportId?: string | null) => void;
 }
 
+const STATUS_POLL_INTERVAL_MS = 2_500;
+const MAX_STATUS_POLL_MS = 10 * 60_000;
+const SYNTHETIC_REPORT_CHARS = 5200;
+
 export function useAnalysisStream(options?: AnalysisStreamOptions) {
   const [state, setState] = useState<AnalysisStreamState>(initial);
+  const runIdRef = useRef(0);
   const onEvent = options?.onEvent;
 
   const start = useCallback(async (body: AnalyzeRequestBody) => {
-    setState({ ...initial, isStreaming: true });
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    const updateState = (updater: (current: AnalysisStreamState) => AnalysisStreamState) => {
+      setState((current) => (runIdRef.current === runId ? updater(current) : current));
+    };
+
+    setState({ ...initial, isStreaming: true, statusMessage: "정밀 분석 요청을 전송하고 있습니다." });
     onEvent?.("analysis_fetch_started", { phase: "client_fetch", gender: body.gender });
 
     let response: Response;
@@ -46,77 +65,140 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
     } catch (error) {
       const message = analysisErrorMessage(error);
       onEvent?.("analysis_fetch_failed", { phase: "client_fetch", message }, null);
-      setState((current) => ({ ...current, isStreaming: false, error: message }));
+      updateState((current) => ({ ...current, isStreaming: false, error: message }));
       return null;
     }
 
-    onEvent?.("analysis_response_received", { phase: "client_fetch", status: response.status, ok: response.ok, hasBody: Boolean(response.body) });
+    onEvent?.("analysis_response_received", { phase: "client_fetch", status: response.status, ok: response.ok });
 
-    if (!response.ok || !response.body) {
+    if (!response.ok) {
       const text = await response.text();
       const message = analysisErrorMessage(text || response.status);
       onEvent?.("analysis_response_rejected", { phase: "client_fetch", status: response.status, message });
-      setState((current) => ({ ...current, isStreaming: false, error: message }));
+      updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message }));
       return null;
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let finalReportId: string | null = null;
-
+    let queued: AnalyzeStartResponse;
     try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-        for (const event of events) {
-          const line = event
-            .split("\n")
-            .find((part) => part.startsWith("data: "))
-            ?.slice(6);
-          if (!line) continue;
-          const parsed = JSON.parse(line) as AnalyzeSseEvent;
-          if (parsed.type === "report_id") {
-            finalReportId = parsed.reportId;
-            onEvent?.("analysis_report_id_received", { phase: "client_stream" }, parsed.reportId);
-            setState((current) => ({ ...current, reportId: parsed.reportId }));
-          } else if (parsed.type === "status") {
-            onEvent?.("analysis_status_received", { phase: "client_stream", message: parsed.message, attempt: parsed.attempt, maxAttempts: parsed.maxAttempts }, finalReportId);
-            setState((current) => ({ ...current, statusMessage: parsed.message }));
-          } else if (parsed.type === "chunk") {
-            onEvent?.("analysis_stream_chunk_received", { phase: "client_stream", chunkBytes: parsed.text.length }, finalReportId);
-            setState((current) => ({ ...current, raw: current.raw + parsed.text, statusMessage: null }));
-          } else if (parsed.type === "complete") {
-            finalReportId = parsed.reportId;
-            onEvent?.("analysis_stream_complete", { phase: "client_stream" }, parsed.reportId);
-            setState((current) => ({
-              ...current,
-              reportId: parsed.reportId,
-              sections: parsed.sections,
-              statusMessage: null,
-              isComplete: true,
-              isStreaming: false,
-            }));
-          } else if (parsed.type === "error") {
-            const message = analysisErrorMessage(parsed.message);
-            onEvent?.("analysis_stream_error", { phase: "client_stream", message }, finalReportId);
-            setState((current) => ({ ...current, error: message, statusMessage: null, isStreaming: false }));
-          }
-        }
-      }
+      queued = (await response.json()) as AnalyzeStartResponse;
     } catch (error) {
       const message = analysisErrorMessage(error);
-      onEvent?.("analysis_stream_read_failed", { phase: "client_stream", message }, finalReportId);
-      setState((current) => ({ ...current, isStreaming: false, error: message }));
-      return finalReportId;
+      onEvent?.("analysis_response_parse_failed", { phase: "client_fetch", message });
+      updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message }));
+      return null;
     }
 
-    setState((current) => ({ ...current, isStreaming: false }));
+    onEvent?.("analysis_report_id_received", { phase: "client_poll", status: queued.status }, queued.reportId);
+    updateState((current) => ({
+      ...current,
+      reportId: queued.reportId,
+      jobStatus: queued.status,
+      statusMessage: queued.message,
+      raw: syntheticRaw(1),
+      pollCount: 0,
+    }));
+
+    const finalReportId = queued.reportId;
+    const startedAt = Date.now();
+    let pollCount = 0;
+
+    while (Date.now() - startedAt < MAX_STATUS_POLL_MS) {
+      await delay(STATUS_POLL_INTERVAL_MS);
+      if (runIdRef.current !== runId) return finalReportId;
+      pollCount += 1;
+
+      let statusResponse: Response;
+      try {
+        statusResponse = await fetch(`/api/analyze/status?id=${encodeURIComponent(finalReportId)}`, { cache: "no-store" });
+      } catch (error) {
+        const message = analysisErrorMessage(error);
+        onEvent?.("analysis_status_fetch_failed", { phase: "client_poll", message, pollCount }, finalReportId);
+        updateState((current) => ({ ...current, statusMessage: message, pollCount }));
+        continue;
+      }
+
+      if (!statusResponse.ok) {
+        const text = await statusResponse.text();
+        const message = analysisErrorMessage(text || statusResponse.status);
+        onEvent?.("analysis_status_rejected", { phase: "client_poll", status: statusResponse.status, message, pollCount }, finalReportId);
+        updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message, pollCount }));
+        return finalReportId;
+      }
+
+      const status = (await statusResponse.json()) as AnalyzeStatusResponse;
+      onEvent?.(
+        "analysis_status_received",
+        {
+          phase: "client_poll",
+          status: status.status,
+          message: status.message,
+          attemptCount: "attemptCount" in status ? status.attemptCount : undefined,
+          modelUsed: status.modelUsed,
+          pollCount,
+        },
+        finalReportId,
+      );
+
+      if (status.status === "complete") {
+        onEvent?.("analysis_stream_complete", { phase: "client_poll", modelUsed: status.modelUsed, pollCount }, status.reportId);
+        updateState((current) => ({
+          ...current,
+          reportId: status.reportId,
+          sections: status.sections,
+          raw: syntheticRaw(SYNTHETIC_REPORT_CHARS),
+          statusMessage: status.message,
+          jobStatus: status.status,
+          modelUsed: status.modelUsed,
+          pollCount,
+          isComplete: true,
+          isStreaming: false,
+        }));
+        return status.reportId;
+      }
+
+      if (status.status === "failed") {
+        const message = status.message;
+        onEvent?.("analysis_stream_error", { phase: "client_poll", message, pollCount, modelUsed: status.modelUsed }, status.reportId);
+        updateState((current) => ({
+          ...current,
+          reportId: status.reportId,
+          error: message,
+          statusMessage: null,
+          jobStatus: status.status,
+          attemptCount: status.attemptCount,
+          modelUsed: status.modelUsed,
+          pollCount,
+          isStreaming: false,
+        }));
+        return status.reportId;
+      }
+
+      updateState((current) => ({
+        ...current,
+        reportId: status.reportId,
+        statusMessage: status.message,
+        jobStatus: status.status,
+        attemptCount: status.attemptCount,
+        modelUsed: status.modelUsed,
+        pollCount,
+        raw: syntheticRaw(Math.min(SYNTHETIC_REPORT_CHARS - 1, 400 + pollCount * 360)),
+      }));
+    }
+
+    const message = "분석 대기 시간이 길어지고 있습니다. 결과 링크에서 잠시 후 다시 확인해 주세요.";
+    onEvent?.("analysis_status_poll_timeout", { phase: "client_poll", message }, finalReportId);
+    updateState((current) => ({ ...current, isStreaming: false, statusMessage: message, error: message }));
     return finalReportId;
   }, [onEvent]);
 
   return { state, start };
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function syntheticRaw(chars: number): string {
+  return ".".repeat(Math.max(0, Math.min(chars, SYNTHETIC_REPORT_CHARS)));
 }

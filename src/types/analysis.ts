@@ -77,12 +77,16 @@ export type AgeBucket = "under_35" | "over_35";
 
 export type ReportSections = z.infer<typeof reportSectionsSchema>;
 
+export type AnalysisJobStatus = "queued" | "processing" | "retrying" | "complete" | "failed";
+export type LegacyAnalysisJobStatus = "analyzing";
+export type FaceReportStatus = AnalysisJobStatus | LegacyAnalysisJobStatus;
+
 export interface FaceReportRow {
   id: string;
   created_at: string;
   expires_at: string;
   gender: Gender;
-  status: "analyzing" | "complete" | "failed";
+  status: FaceReportStatus;
   face_image_path: string | null;
   landmarks_json: Landmark[] | null;
   metrics_json: FaceMetrics | null;
@@ -92,6 +96,14 @@ export interface FaceReportRow {
   user_agent: string | null;
   ip_hash: string | null;
   age_bucket: AgeBucket | null;
+  attempt_count?: number | null;
+  model_used?: string | null;
+  last_error?: string | null;
+  retry_after?: string | null;
+  locked_until?: string | null;
+  processing_started_at?: string | null;
+  heartbeat_at?: string | null;
+  completed_at?: string | null;
 }
 
 export interface AnalyzeRequestBody {
@@ -102,9 +114,33 @@ export interface AnalyzeRequestBody {
   clientSessionId?: string;
 }
 
-export type AnalyzeSseEvent =
-  | { type: "report_id"; reportId: string }
-  | { type: "status"; message: string; attempt?: number; maxAttempts?: number }
-  | { type: "chunk"; text: string }
-  | { type: "complete"; reportId: string; sections: ReportSections }
-  | { type: "error"; message: string };
+export interface AnalyzeStartResponse {
+  reportId: string;
+  status: Extract<AnalysisJobStatus, "queued" | "processing" | "retrying">;
+  message: string;
+}
+
+export type AnalyzeStatusResponse =
+  | {
+      reportId: string;
+      status: Extract<FaceReportStatus, "queued" | "processing" | "retrying" | "analyzing">;
+      message: string;
+      retryAfter: string | null;
+      attemptCount: number;
+      modelUsed: string | null;
+    }
+  | {
+      reportId: string;
+      status: "complete";
+      message: string;
+      sections: ReportSections;
+      modelUsed: string | null;
+    }
+  | {
+      reportId: string;
+      status: "failed";
+      message: string;
+      retryAfter: string | null;
+      attemptCount: number;
+      modelUsed: string | null;
+    };
