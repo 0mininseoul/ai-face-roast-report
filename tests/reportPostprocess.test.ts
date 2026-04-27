@@ -77,6 +77,44 @@ describe("postprocessReportSections", () => {
     const sections = makeSections({ conclusion: "하 씨발 진짜 답이 없다 ㅋㅋ." });
     expect(postprocessReportSections(sections, { gender: "male" }).conclusion).toContain("씨발");
   });
+
+  it("aligns non-conclusion age mentions to the displayed estimated age", () => {
+    const sections = makeSections({
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 33,
+        estimatedAgeReal: 28,
+        ageBucket: "under_35",
+        physiognomy: "외형은 28세 기준으로도 균형이 아쉽다.",
+      },
+      conclusion: "28살인데 벌써부터 그러면 30대 되면 더 답이 없겠다.",
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.impression.physiognomy).toContain("33세");
+    expect(processed.impression.physiognomy).not.toContain("28세");
+    expect(processed.conclusion).toContain("20대 후반처럼 보이는 인상인데");
+    expect(processed.conclusion).not.toContain("28살");
+    expect(processed.conclusion).not.toContain("33살");
+    expect(processed.conclusion).toContain("30대 되면");
+  });
+
+  it("softens displayed-age claims in the final conclusion", () => {
+    const sections = makeSections({
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 33,
+        estimatedAgeReal: 28,
+        ageBucket: "under_35",
+        physiognomy: "",
+      },
+      conclusion: "33살인데 벌써부터 인상이 무너져 보인다.",
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.conclusion).toContain("20대 후반처럼 보이는 인상인데");
+    expect(processed.conclusion).not.toContain("33살");
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

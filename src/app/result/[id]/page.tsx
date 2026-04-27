@@ -9,6 +9,7 @@ import { ResultHeader } from "@/components/result/ResultHeader";
 import { StopCameraOnMount } from "@/components/result/StopCameraOnMount";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { alignUserFacingAgeMentions } from "@/lib/analysis/reportPostprocess";
 import { absoluteUrl, OG_IMAGE_PATH, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
 import { getRequestOrigin } from "@/lib/siteUrl";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -41,7 +42,7 @@ export default async function ResultPage({ params }: { params: { id: string } })
   if (row.status === "analyzing") return <PendingResultPage />;
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) notFound();
 
-  const sections = reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json));
+  const sections = alignUserFacingAgeMentions(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)));
   const { data: signed } = await supabase.storage.from("face-images").createSignedUrl(row.face_image_path, 60 * 60 * 24);
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();

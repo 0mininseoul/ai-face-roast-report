@@ -15,13 +15,16 @@ const FEMALE_BANNED_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
   [/씨\s*발(?:아|놈|년|새끼)?/gi, "진짜"],
 ];
 
+const AGE_MENTION_RE = /(?<!\d)(\d{1,3})\s*(세|살)(?![기대차])/g;
+
 interface PostprocessOptions {
   gender?: Gender;
 }
 
 export function postprocessReportSections(sections: ReportSections, options: PostprocessOptions = {}): ReportSections {
   const storageSanitized = sanitizeStorageMentions(sections);
-  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(storageSanitized) : storageSanitized;
+  const ageAligned = alignUserFacingAgeMentions(storageSanitized);
+  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(ageAligned) : ageAligned;
   const isOver35 = sanitized.impression.ageBucket === "over_35";
   const fallbackConclusion = isOver35
     ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
@@ -32,6 +35,65 @@ export function postprocessReportSections(sections: ReportSections, options: Pos
     conclusion: isOver35 ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
     mainCopy: isOver35 ? stripCasualLaughs(sanitized.mainCopy) : sanitized.mainCopy,
   };
+}
+
+export function alignUserFacingAgeMentions(sections: ReportSections): ReportSections {
+  const displayAge = normalizedAge(sections.impression.estimatedAge);
+  const realAge = normalizedAge(sections.impression.estimatedAgeReal);
+  if (displayAge === null) return sections;
+
+  const aligned = mapReportText(sections, (text) => alignAgeText(text, displayAge, realAge));
+  return {
+    ...aligned,
+    conclusion: softenConclusionAgeClaims(sections.conclusion, displayAge, realAge),
+  };
+}
+
+function alignAgeText(text: string, displayAge: number, realAge: number | null): string {
+  const displayDecade = Math.floor(displayAge / 10) * 10;
+  const realDecade = realAge === null ? null : Math.floor(realAge / 10) * 10;
+
+  let next = text.replace(AGE_MENTION_RE, (match, rawAge: string, unit: string) => {
+    const mentionedAge = Number(rawAge);
+    if (!Number.isInteger(mentionedAge) || mentionedAge === displayAge) return match;
+    if (realAge !== null && Math.abs(mentionedAge - realAge) <= 1) return `${displayAge}${unit}`;
+    return match;
+  });
+
+  if (realDecade !== null && realDecade !== displayDecade) {
+    next = next.replace(new RegExp(`${realDecade}대`, "g"), `${displayDecade}대`);
+    next = next.replace(new RegExp(`${displayDecade}대\\s*(?:가\\s*)?(?:되면|된다면|들어서면|진입하면)`, "g"), "시간이 더 지나면");
+  }
+
+  return next;
+}
+
+function softenConclusionAgeClaims(text: string, displayAge: number, realAge: number | null): string {
+  const appearancePhrase = `${ageRangeLabel(realAge ?? displayAge)}처럼 보이는 인상`;
+
+  return text.replace(AGE_MENTION_RE, (match, rawAge: string) => {
+    const mentionedAge = Number(rawAge);
+    if (!Number.isInteger(mentionedAge)) return match;
+    const matchesDisplayAge = Math.abs(mentionedAge - displayAge) <= 1;
+    const matchesRealAge = realAge !== null && Math.abs(mentionedAge - realAge) <= 1;
+    return matchesDisplayAge || matchesRealAge ? appearancePhrase : match;
+  });
+}
+
+function ageRangeLabel(age: number): string {
+  if (age < 20) return "앳된 나이대";
+  const decade = Math.floor(age / 10) * 10;
+  if (age >= 60) return "60대 이상";
+
+  const unit = age % 10;
+  const segment = unit <= 3 ? "초반" : unit <= 6 ? "중반" : "후반";
+  return `${decade}대 ${segment}`;
+}
+
+function normalizedAge(value: number): number | null {
+  if (!Number.isFinite(value)) return null;
+  const age = Math.round(value);
+  return age > 0 ? age : null;
 }
 
 function ensureMockingLaugh(conclusion: string): string {

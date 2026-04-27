@@ -33,4 +33,11 @@ describe("analyze system prompt guardrails", () => {
   it("bans 씨발 for female-selected users", () => {
     expect(prompt).toContain("여성 선택 시 `씨발`은 금칙어입니다");
   });
+
+  it("keeps internal age and user-facing age separated", () => {
+    expect(prompt).toContain("사용자에게 보이는 문장에는 절대 직접 언급하지 않습니다");
+    expect(prompt).toContain("결론을 제외한 사용자 노출 문장에 쓰는 *표시용 연령*");
+    expect(prompt).toContain("`conclusion`에서는 현재 나이를 숫자로 단정하지 않습니다");
+    expect(prompt).toContain("20대 후반처럼 보이는 인상");
+  });
 });
