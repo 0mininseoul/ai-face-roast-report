@@ -49,6 +49,34 @@ describe("postprocessReportSections", () => {
     const text = [processed.conclusion, processed.mainCopy, ...processed.scores.comments].join(" ");
     expect(text).not.toMatch(/모쏠아다|아다|처녀|동정|성경험/);
   });
+
+  it("removes 씨발 variants for female-selected reports", () => {
+    const sections = makeSections({
+      conclusion: "하 씨발 진짜 답이 없다 ㅋㅋ. 셀카 앱도 포기할 얼굴이다.",
+      mainCopy: "얼굴 보자마자 씨 발 소리 나오는 타입",
+      parts: {
+        forehead: { metricsText: "", comment: "" },
+        eyes: { metricsText: "눈 비율이 씨발아 소리 나올 정도다.", comment: "" },
+        nose: { metricsText: "", comment: "" },
+        mouth: { metricsText: "", comment: "" },
+        jaw: { metricsText: "", comment: "" },
+        skin: { observation: "", comment: "" },
+      },
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "female" });
+    const text = [
+      processed.conclusion,
+      processed.mainCopy,
+      processed.parts.eyes.metricsText,
+    ].join(" ");
+    expect(text).not.toMatch(/씨\s*발/);
+  });
+
+  it("keeps 씨발 variants for male-selected reports", () => {
+    const sections = makeSections({ conclusion: "하 씨발 진짜 답이 없다 ㅋㅋ." });
+    expect(postprocessReportSections(sections, { gender: "male" }).conclusion).toContain("씨발");
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

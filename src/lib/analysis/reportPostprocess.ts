@@ -1,4 +1,4 @@
-import type { ReportSections } from "@/types/analysis";
+import type { Gender, ReportSections } from "@/types/analysis";
 
 const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/모\s*쏠\s*아\s*다/gi, "연애 운까지 박살난 타입"],
@@ -11,8 +11,17 @@ const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/(?<![a-z])virgin(?![a-z])/gi, "사생활"],
 ];
 
-export function postprocessReportSections(sections: ReportSections): ReportSections {
-  const sanitized = sanitizeStorageMentions(sections);
+const FEMALE_BANNED_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/씨\s*발(?:아|놈|년|새끼)?/gi, "진짜"],
+];
+
+interface PostprocessOptions {
+  gender?: Gender;
+}
+
+export function postprocessReportSections(sections: ReportSections, options: PostprocessOptions = {}): ReportSections {
+  const storageSanitized = sanitizeStorageMentions(sections);
+  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(storageSanitized) : storageSanitized;
   const isOver35 = sanitized.impression.ageBucket === "over_35";
   const fallbackConclusion = isOver35
     ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
@@ -35,49 +44,57 @@ function stripCasualLaughs(text: string): string {
 }
 
 function sanitizeStorageMentions(sections: ReportSections): ReportSections {
+  return mapReportText(sections, sanitizeText);
+}
+
+function sanitizeFemaleBannedWords(sections: ReportSections): ReportSections {
+  return mapReportText(sections, sanitizeFemaleBannedText);
+}
+
+function mapReportText(sections: ReportSections, mapText: (text: string) => string): ReportSections {
   return {
     ...sections,
     meta: {
       ...sections.meta,
-      complianceText: sanitizeText(sections.meta.complianceText),
+      complianceText: mapText(sections.meta.complianceText),
     },
     geometry: {
-      asymmetry: sanitizeText(sections.geometry.asymmetry),
-      phi: sanitizeText(sections.geometry.phi),
-      thirds: sanitizeText(sections.geometry.thirds),
-      fifths: sanitizeText(sections.geometry.fifths),
-      faceAspect: sanitizeText(sections.geometry.faceAspect),
+      asymmetry: mapText(sections.geometry.asymmetry),
+      phi: mapText(sections.geometry.phi),
+      thirds: mapText(sections.geometry.thirds),
+      fifths: mapText(sections.geometry.fifths),
+      faceAspect: mapText(sections.geometry.faceAspect),
     },
     parts: {
-      forehead: sanitizePart(sections.parts.forehead),
-      eyes: sanitizePart(sections.parts.eyes),
-      nose: sanitizePart(sections.parts.nose),
-      mouth: sanitizePart(sections.parts.mouth),
-      jaw: sanitizePart(sections.parts.jaw),
+      forehead: mapPartText(sections.parts.forehead, mapText),
+      eyes: mapPartText(sections.parts.eyes, mapText),
+      nose: mapPartText(sections.parts.nose, mapText),
+      mouth: mapPartText(sections.parts.mouth, mapText),
+      jaw: mapPartText(sections.parts.jaw, mapText),
       skin: {
-        observation: sanitizeText(sections.parts.skin.observation),
-        comment: sanitizeText(sections.parts.skin.comment),
+        observation: mapText(sections.parts.skin.observation),
+        comment: mapText(sections.parts.skin.comment),
       },
     },
     scores: {
       ...sections.scores,
-      comments: sections.scores.comments.map(sanitizeText) as [string, string, string, string, string],
+      comments: sections.scores.comments.map(mapText) as [string, string, string, string, string],
     },
     impression: {
       ...sections.impression,
-      keywords: sections.impression.keywords.map(sanitizeText),
-      physiognomy: sanitizeText(sections.impression.physiognomy),
+      keywords: sections.impression.keywords.map(mapText),
+      physiognomy: mapText(sections.impression.physiognomy),
     },
-    conclusion: sanitizeText(sections.conclusion),
-    mainCopy: sanitizeText(sections.mainCopy),
+    conclusion: mapText(sections.conclusion),
+    mainCopy: mapText(sections.mainCopy),
   };
 }
 
-function sanitizePart<T extends { metricsText: string; comment: string }>(part: T): T {
+function mapPartText<T extends { metricsText: string; comment: string }>(part: T, mapText: (text: string) => string): T {
   return {
     ...part,
-    metricsText: sanitizeText(part.metricsText),
-    comment: sanitizeText(part.comment),
+    metricsText: mapText(part.metricsText),
+    comment: mapText(part.comment),
   };
 }
 
@@ -91,4 +108,10 @@ export function sanitizeText(text: string): string {
 
 function sanitizeSensitiveSexualExperience(text: string): string {
   return SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text);
+}
+
+function sanitizeFemaleBannedText(text: string): string {
+  return FEMALE_BANNED_WORD_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text)
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }

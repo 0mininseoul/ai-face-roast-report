@@ -29,4 +29,8 @@ describe("analyze system prompt guardrails", () => {
     expect(prompt).toContain("메트릭만으로 성격, 인격, 지능, 사회성, 대인관계, 우울/비관 같은 내면 상태를 단정하지 않습니다");
     expect(prompt).toContain("로스팅은 약하게 만들 필요가 없습니다");
   });
+
+  it("bans 씨발 for female-selected users", () => {
+    expect(prompt).toContain("여성 선택 시 `씨발`은 금칙어입니다");
+  });
 });

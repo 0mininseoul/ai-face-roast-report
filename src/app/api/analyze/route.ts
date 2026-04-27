@@ -186,12 +186,19 @@ export async function POST(req: NextRequest) {
             }),
           send,
           record,
+          maskRawChunks: body.gender === "female",
         });
 
-        const parsed = postprocessReportSections(parseReport(raw));
-        const ageBucket = parsed.impression.ageBucket;
-        const mainCopy = pickMainCopy(body.gender, ageBucket, reportId);
-        const sections = { ...parsed, mainCopy };
+        const parsed = parseReport(raw);
+        const sections = postprocessReportSections(
+          {
+            ...parsed,
+            mainCopy: pickMainCopy(body.gender, parsed.impression.ageBucket, reportId),
+          },
+          { gender: body.gender },
+        );
+        const ageBucket = sections.impression.ageBucket;
+        const mainCopy = sections.mainCopy;
         await supabase
           .from("face_reports")
           .update({
@@ -235,10 +242,12 @@ async function streamAnalysisWithRetry({
   createStream,
   send,
   record,
+  maskRawChunks = false,
 }: {
   createStream: () => Promise<AsyncIterable<{ text?: string }>>;
   send: (event: AnalyzeSseEvent) => void;
   record: (eventName: string, payload?: Record<string, unknown>, level?: "debug" | "info" | "warn" | "error") => Promise<void>;
+  maskRawChunks?: boolean;
 }) {
   let lastError: unknown = null;
   const maxAttempts = ANALYSIS_RETRY_DELAYS_MS.length + 1;
@@ -264,7 +273,7 @@ async function streamAnalysisWithRetry({
         if (!text) continue;
         raw += text;
         chunkCount += 1;
-        send({ type: "chunk", text });
+        send({ type: "chunk", text: maskRawChunks ? ".".repeat(text.length) : text });
         void record("analysis_ai_chunk", { attempt: attempt + 1, chunkCount, chunkChars: text.length, totalChars: raw.length }, "debug");
       }
 
