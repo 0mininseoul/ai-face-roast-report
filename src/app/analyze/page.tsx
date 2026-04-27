@@ -36,6 +36,7 @@ const ANALYSIS_CAPTURE_SETTLE_MS = 800;
 const LIVENESS_WARNING_MS = 3500;
 const ZERO_SAMPLE_CPU_FALLBACK_MS = 12_000;
 const ZERO_SAMPLE_FAIL_MS = 24_000;
+const IMAGE_FALLBACK_AFTER_MS = 6_000;
 const LANDMARK_LOSS_RESET_MS = 1_500;
 const LIVENESS_WARNING_TEXT = "카메라 앞에서 얼굴을 살짝 움직여 주세요";
 type CardSide = "left" | "right";
@@ -73,10 +74,13 @@ function AnalyzeClient() {
   const zeroSampleFallbackLoggedRef = useRef(false);
   const zeroSampleFailureLoggedRef = useRef(false);
   const cpuFallbackRecoveredLoggedRef = useRef(false);
+  const imageFallbackRecoveredLoggedRef = useRef(false);
+  const faceLandmarkerErrorLoggedRef = useRef<string | null>(null);
   const diagnosticCaptureSentRef = useRef(false);
   const sampleCollectionStartedAtRef = useRef<number | null>(null);
   const lastLandmarksSeenAtRef = useRef<number | null>(null);
   const lastLandmarkLostLogRef = useRef(0);
+  const detectedFaceCountRef = useRef(0);
   const landmarkLossCountRef = useRef(0);
   const livenessWarningUntilRef = useRef(0);
   const reportIdRef = useRef<string | null>(null);
@@ -92,7 +96,11 @@ function AnalyzeClient() {
   const [clientError, setClientError] = useState<string | null>(null);
   const [faceLandmarkerDelegate, setFaceLandmarkerDelegate] = useState<FaceLandmarkerDelegate>("GPU");
   const { videoRef, streamRef, status, error, start } = useCamera({ persistGlobal: true });
-  const { result, landmarks, isLoading } = useFaceLandmarker(videoRef, status === "ready", { delegate: faceLandmarkerDelegate });
+  const { result, landmarks, detectionSource, isLoading, error: faceLandmarkerError } = useFaceLandmarker(videoRef, status === "ready", {
+    delegate: faceLandmarkerDelegate,
+    imageFallback: true,
+    imageFallbackAfterMs: IMAGE_FALLBACK_AFTER_MS,
+  });
   const logEvent = useCallback((eventName: string, payload?: Record<string, unknown>, reportId?: string | null, level: "debug" | "info" | "warn" | "error" = "info") => {
     logClientEvent({ eventName, payload, reportId: reportId ?? reportIdRef.current, level });
   }, []);
@@ -115,9 +123,11 @@ function AnalyzeClient() {
       trackWidth: track?.getSettings().width ?? null,
       trackHeight: track?.getSettings().height ?? null,
       trackFps: track?.getSettings().frameRate ?? null,
+      detectedFaceCount: detectedFaceCountRef.current,
+      detectionSource,
       sampleCount: sampleRef.current.length,
     };
-  }, [faceLandmarkerDelegate, status, streamRef, videoRef]);
+  }, [detectionSource, faceLandmarkerDelegate, status, streamRef, videoRef]);
   const handleAnalysisEvent = useCallback(
     (eventName: string, payload?: Record<string, unknown>, reportId?: string | null) => {
       if (reportId) reportIdRef.current = reportId;
@@ -164,6 +174,17 @@ function AnalyzeClient() {
     if (status !== "ready") return;
     logEvent(isLoading ? "facemesh_model_loading" : "facemesh_model_ready", { status });
   }, [isLoading, logEvent, status]);
+
+  useEffect(() => {
+    detectedFaceCountRef.current = result?.faceLandmarks?.length ?? 0;
+  }, [result]);
+
+  useEffect(() => {
+    if (!faceLandmarkerError || faceLandmarkerErrorLoggedRef.current === faceLandmarkerError) return;
+    faceLandmarkerErrorLoggedRef.current = faceLandmarkerError;
+    setFaceWarning("얼굴 인식 엔진을 다시 준비하고 있습니다");
+    logEvent("face_landmarker_runtime_error", { ...faceDetectionDiagnostics(), message: faceLandmarkerError }, null, "error");
+  }, [faceDetectionDiagnostics, faceLandmarkerError, logEvent]);
 
   const beginAnalysis = useCallback(
     async (samples: Landmark[][], trigger: AnalysisTrigger) => {
@@ -288,9 +309,19 @@ function AnalyzeClient() {
       logEvent("face_landmarker_cpu_fallback_recovered", { ...faceDetectionDiagnostics(), sampleCount: nextSamples.length });
     }
 
+    if (detectionSource === "image_fallback" && !imageFallbackRecoveredLoggedRef.current) {
+      imageFallbackRecoveredLoggedRef.current = true;
+      logEvent("face_image_fallback_detected", { ...faceDetectionDiagnostics(), sampleCount: nextSamples.length }, null, "warn");
+    }
+
+    if (zeroSampleFailureLoggedRef.current) {
+      zeroSampleFailureLoggedRef.current = false;
+      logEvent("face_sample_collection_recovered_after_retry", { ...faceDetectionDiagnostics(), sampleCount: nextSamples.length });
+    }
+
     if (!firstLandmarkLoggedRef.current) {
       firstLandmarkLoggedRef.current = true;
-      logEvent("face_landmarks_detected", { faceCount, sampleCount: nextSamples.length });
+      logEvent("face_landmarks_detected", { detectionSource, faceCount, sampleCount: nextSamples.length });
     }
 
     const sampleBucket = sampleProgressBucket(nextSamples.length);
@@ -302,7 +333,7 @@ function AnalyzeClient() {
     if (canStartAnalysis(nextSamples.length, "target_samples")) {
       void beginAnalysis(nextSamples, "target_samples");
     }
-  }, [beginAnalysis, faceDetectionDiagnostics, faceLandmarkerDelegate, landmarks, logEvent, result]);
+  }, [beginAnalysis, detectionSource, faceDetectionDiagnostics, faceLandmarkerDelegate, landmarks, logEvent, result]);
 
   useEffect(() => {
     if (status !== "ready") {
@@ -339,13 +370,12 @@ function AnalyzeClient() {
 
       if (samples.length === 0 && elapsedMs >= ZERO_SAMPLE_FAIL_MS && faceLandmarkerDelegate === "CPU" && !zeroSampleFailureLoggedRef.current) {
         zeroSampleFailureLoggedRef.current = true;
-        window.clearInterval(interval);
-        logEvent("face_sample_collection_failed_no_landmarks", { ...faceDetectionDiagnostics(), elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "error");
+        logEvent("face_sample_collection_retrying_no_detection", { ...faceDetectionDiagnostics(), elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT }, null, "warn");
         if (!diagnosticCaptureSentRef.current) {
           diagnosticCaptureSentRef.current = true;
-          uploadDiagnosticFrame("face_sample_collection_failed_no_landmarks", { elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT });
+          uploadDiagnosticFrame("face_sample_collection_retrying_no_detection", { elapsedMs, targetSampleCount: TARGET_SAMPLE_COUNT });
         }
-        setClientError("카메라 영상에서 얼굴을 인식하지 못했습니다. 얼굴이 화면 중앙에 보이도록 하고, 조명을 밝게 한 뒤 다시 시도해 주세요.");
+        setFaceWarning("얼굴 인식이 지연되고 있습니다. 화면 중앙에 얼굴을 둔 상태로 잠시 유지해 주세요");
         return;
       }
 

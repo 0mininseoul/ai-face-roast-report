@@ -3,21 +3,31 @@
 import { FaceLandmarker, FilesetResolver, type FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
 export type FaceLandmarkerDelegate = "GPU" | "CPU";
+type FaceLandmarkerRunningMode = "VIDEO" | "IMAGE";
 
-let singleton: Promise<FaceLandmarker> | null = null;
-let singletonDelegate: FaceLandmarkerDelegate | null = null;
+const singletonByKey = new Map<string, Promise<FaceLandmarker>>();
 
 export async function getFaceLandmarker(delegate: FaceLandmarkerDelegate = "GPU"): Promise<FaceLandmarker> {
-  if (!singleton || singletonDelegate !== delegate) {
-    singletonDelegate = delegate;
-    singleton = createFaceLandmarker(delegate);
-  }
-  return singleton;
+  return getFaceLandmarkerForMode("VIDEO", delegate);
+}
+
+export async function getFaceImageLandmarker(delegate: FaceLandmarkerDelegate = "CPU"): Promise<FaceLandmarker> {
+  return getFaceLandmarkerForMode("IMAGE", delegate);
 }
 
 export type { FaceLandmarkerResult };
 
-async function createFaceLandmarker(delegate: FaceLandmarkerDelegate): Promise<FaceLandmarker> {
+function getFaceLandmarkerForMode(mode: FaceLandmarkerRunningMode, delegate: FaceLandmarkerDelegate): Promise<FaceLandmarker> {
+  const key = `${mode}:${delegate}`;
+  const existing = singletonByKey.get(key);
+  if (existing) return existing;
+
+  const created = createFaceLandmarker(mode, delegate);
+  singletonByKey.set(key, created);
+  return created;
+}
+
+async function createFaceLandmarker(mode: FaceLandmarkerRunningMode, delegate: FaceLandmarkerDelegate): Promise<FaceLandmarker> {
   const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm");
   return FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
@@ -25,7 +35,7 @@ async function createFaceLandmarker(delegate: FaceLandmarkerDelegate): Promise<F
         "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
       delegate,
     },
-    runningMode: "VIDEO",
+    runningMode: mode,
     numFaces: 2,
     outputFaceBlendshapes: false,
     outputFacialTransformationMatrixes: false,

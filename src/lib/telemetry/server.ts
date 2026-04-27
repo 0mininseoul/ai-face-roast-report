@@ -14,7 +14,9 @@ const OPERATIONAL_WARNING_EVENTS = new Set([
   "analysis_diagnostic_frame_rate_limited",
   "analysis_diagnostic_frame_rejected",
   "face_sample_collection_waiting_long",
+  "face_sample_collection_retrying_no_detection",
   "face_landmarker_cpu_fallback_started",
+  "face_image_fallback_detected",
   "feedback_rate_limited",
 ]);
 
@@ -31,6 +33,7 @@ const OPERATIONAL_ERROR_EVENTS = new Set([
   "analysis_client_prepare_failed",
   "analysis_diagnostic_frame_store_failed",
   "face_sample_collection_failed_no_landmarks",
+  "face_landmarker_runtime_error",
   "feedback_store_failed",
 ]);
 
