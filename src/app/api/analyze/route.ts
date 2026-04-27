@@ -188,19 +188,27 @@ export async function POST(req: NextRequest) {
           record,
         });
 
-        const sections = postprocessReportSections(parseReport(raw));
-        const mainCopy = pickMainCopy(body.gender, reportId);
+        const parsed = postprocessReportSections(parseReport(raw));
+        const ageBucket = parsed.impression.ageBucket;
+        const mainCopy = pickMainCopy(body.gender, ageBucket, reportId);
+        const sections = { ...parsed, mainCopy };
         await supabase
           .from("face_reports")
           .update({
             status: "complete",
             report_sections_json: sections,
             main_copy: mainCopy,
+            age_bucket: ageBucket,
           })
           .eq("id", reportId);
 
         send({ type: "complete", reportId, sections });
-        await record("analysis_report_completed", { chunkCount, totalChars: raw.length });
+        await record("analysis_report_completed", {
+          chunkCount,
+          totalChars: raw.length,
+          ageBucket,
+          ageReal: parsed.impression.estimatedAgeReal,
+        });
       } catch (error) {
         await supabase.from("face_reports").update({ status: "failed" }).eq("id", reportId);
         const providerMessage = extractErrorText(error);

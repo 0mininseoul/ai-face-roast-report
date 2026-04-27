@@ -64,9 +64,11 @@ export const REPORT_RESPONSE_JSON_SCHEMA = {
       properties: {
         keywords: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 5 },
         estimated_age: { type: "number" },
+        estimated_age_real: { type: "number" },
+        age_bucket: { type: "string", enum: ["under_35", "over_35"] },
         physiognomy: { type: "string" },
       },
-      required: ["keywords", "estimated_age", "physiognomy"],
+      required: ["keywords", "estimated_age", "estimated_age_real", "age_bucket", "physiognomy"],
     },
     conclusion: { type: "string" },
     mainCopy: { type: "string" },
@@ -101,7 +103,13 @@ type GeminiReport = {
     skin: { observation: string; comment: string };
   };
   scores: ReportSections["scores"];
-  impression: { keywords: string[]; estimated_age: number; physiognomy: string };
+  impression: {
+    keywords: string[];
+    estimated_age: number;
+    estimated_age_real: number;
+    age_bucket: "under_35" | "over_35";
+    physiognomy: string;
+  };
   conclusion: string;
   mainCopy: string;
 };
@@ -133,6 +141,8 @@ export function normalizeGeminiReport(input: unknown): ReportSections {
     impression: {
       keywords: raw.impression.keywords,
       estimatedAge: raw.impression.estimated_age,
+      estimatedAgeReal: raw.impression.estimated_age_real,
+      ageBucket: raw.impression.age_bucket,
       physiognomy: raw.impression.physiognomy,
     },
     conclusion: raw.conclusion,

@@ -13,15 +13,25 @@ const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
 
 export function postprocessReportSections(sections: ReportSections): ReportSections {
   const sanitized = sanitizeStorageMentions(sections);
+  const isOver35 = sanitized.impression.ageBucket === "over_35";
+  const fallbackConclusion = isOver35
+    ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
+    : "최종 결론은 처참하다.";
+  const conclusion = sanitized.conclusion?.trim() || fallbackConclusion;
   return {
     ...sanitized,
-    conclusion: ensureMockingLaugh(sanitized.conclusion || "최종 결론은 처참하다."),
+    conclusion: isOver35 ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
+    mainCopy: isOver35 ? stripCasualLaughs(sanitized.mainCopy) : sanitized.mainCopy,
   };
 }
 
 function ensureMockingLaugh(conclusion: string): string {
   if (conclusion.includes("ㅋㅋ")) return conclusion;
   return `${conclusion.trim()} ㅋㅋ 이 정도면 분석 결과가 아니라 공개 처형문에 가깝다.`;
+}
+
+function stripCasualLaughs(text: string): string {
+  return text.replace(/ㅋ{2,}/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
 function sanitizeStorageMentions(sections: ReportSections): ReportSections {

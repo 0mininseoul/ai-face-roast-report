@@ -3,7 +3,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
 const MAX_FONT_SIZE = 64;
-const MIN_FONT_SIZE = 18;
+const MIN_FONT_SIZE = 14;
+const MIN_SCALE_X = 0.82;
+const SQUEEZE_FLOOR = 10;
 
 export function MainCopy({ text }: { text: string }) {
   const containerRef = useRef<HTMLHeadingElement | null>(null);
@@ -19,10 +21,15 @@ export function MainCopy({ text }: { text: string }) {
       const availableWidth = container.clientWidth;
       if (availableWidth <= 0) return;
 
-      // Measure with a hidden clone so we never mutate the visible element
+      const computed = window.getComputedStyle(textNode);
       const clone = textNode.cloneNode(true) as HTMLElement;
       clone.style.cssText =
         "position:fixed;left:-9999px;top:-9999px;visibility:hidden;white-space:nowrap;display:inline-block;transform:none;";
+      clone.style.fontFamily = computed.fontFamily;
+      clone.style.fontWeight = computed.fontWeight;
+      clone.style.fontFeatureSettings = computed.fontFeatureSettings;
+      clone.style.letterSpacing = computed.letterSpacing;
+      clone.style.lineHeight = computed.lineHeight;
       clone.style.fontSize = `${MAX_FONT_SIZE}px`;
       document.body.appendChild(clone);
       const naturalAtMax = clone.scrollWidth;
@@ -32,14 +39,26 @@ export function MainCopy({ text }: { text: string }) {
       }
 
       const ideal = (MAX_FONT_SIZE * availableWidth) / naturalAtMax;
-      const fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.floor(ideal)));
-
-      // If we clamped at MIN_FONT_SIZE but text still overflows, squeeze with scaleX
+      let fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, Math.floor(ideal)));
       let scaleX = 1;
+
       if (fontSize === MIN_FONT_SIZE) {
         clone.style.fontSize = `${MIN_FONT_SIZE}px`;
         const naturalAtMin = clone.scrollWidth;
-        if (naturalAtMin > availableWidth) scaleX = availableWidth / naturalAtMin;
+        if (naturalAtMin > availableWidth) {
+          const ratio = availableWidth / naturalAtMin;
+          // If squeezing past MIN_SCALE_X would distort glyphs, drop fontSize further
+          // (down to SQUEEZE_FLOOR) so scaleX stays in a readable range.
+          if (ratio < MIN_SCALE_X) {
+            const squeezed = Math.max(SQUEEZE_FLOOR, Math.floor(MIN_FONT_SIZE * ratio / MIN_SCALE_X));
+            clone.style.fontSize = `${squeezed}px`;
+            const naturalAtSqueezed = clone.scrollWidth;
+            fontSize = squeezed;
+            scaleX = naturalAtSqueezed > availableWidth ? availableWidth / naturalAtSqueezed : 1;
+          } else {
+            scaleX = ratio;
+          }
+        }
       }
       document.body.removeChild(clone);
 

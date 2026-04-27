@@ -7,8 +7,17 @@ import { Button } from "@/components/ui/Button";
 import { KakaoIcon } from "@/components/ui/KakaoIcon";
 import { Logo } from "@/components/ui/Logo";
 import { loadKakaoSdk, shareKakaoFeed } from "@/lib/kakao/share";
+import { FeedbackButton } from "@/components/result/FeedbackButton";
 
-export function ResultHeader({ shareImageUrl, resultUrl }: { shareImageUrl: string; resultUrl: string }) {
+export function ResultHeader({
+  shareImageUrl,
+  resultUrl,
+  reportId,
+}: {
+  shareImageUrl: string;
+  resultUrl: string;
+  reportId: string;
+}) {
   const [kakaoReady, setKakaoReady] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -71,6 +80,7 @@ export function ResultHeader({ shareImageUrl, resultUrl }: { shareImageUrl: stri
               <span className="hidden sm:inline">다시 분석</span>
             </Button>
           </Link>
+          <FeedbackButton reportId={reportId} />
         </div>
       </div>
       <div className="border-t border-border/70 bg-black/24 px-4 py-2 sm:px-8 sm:py-3">

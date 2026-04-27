@@ -65,11 +65,15 @@ export const reportSectionsSchema = z.object({
   impression: z.object({
     keywords: z.array(z.string()).min(3).max(5),
     estimatedAge: z.number(),
+    estimatedAgeReal: z.number(),
+    ageBucket: z.enum(["under_35", "over_35"]),
     physiognomy: z.string(),
   }),
   conclusion: z.string(),
   mainCopy: z.string(),
 });
+
+export type AgeBucket = "under_35" | "over_35";
 
 export type ReportSections = z.infer<typeof reportSectionsSchema>;
 
@@ -87,6 +91,7 @@ export interface FaceReportRow {
   live_feed_json: string[];
   user_agent: string | null;
   ip_hash: string | null;
+  age_bucket: AgeBucket | null;
 }
 
 export interface AnalyzeRequestBody {
