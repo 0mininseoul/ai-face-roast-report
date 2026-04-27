@@ -85,7 +85,7 @@ describe("postprocessReportSections", () => {
         estimatedAge: 33,
         estimatedAgeReal: 28,
         ageBucket: "under_35",
-        physiognomy: "외형은 28세 기준으로도 균형이 아쉽다.",
+        physiognomy: "외형은 28세 기준으로도 균형이 아쉽고, 20대 후반에서 30대 초반으로 보이는 외모다.",
       },
       conclusion: "28살인데 벌써부터 그러면 30대 되면 더 답이 없겠다.",
     });
@@ -93,7 +93,9 @@ describe("postprocessReportSections", () => {
     const processed = postprocessReportSections(sections);
     expect(processed.impression.physiognomy).toContain("33세");
     expect(processed.impression.physiognomy).not.toContain("28세");
-    expect(processed.conclusion).toContain("20대 후반처럼 보이는 인상인데");
+    expect(processed.impression.physiognomy).toContain("30대 초반으로 보이는 외모");
+    expect(processed.impression.physiognomy).not.toContain("20대 후반");
+    expect(processed.conclusion).toContain("30대 초반처럼 보이는 인상인데");
     expect(processed.conclusion).not.toContain("28살");
     expect(processed.conclusion).not.toContain("33살");
     expect(processed.conclusion).toContain("30대 되면");
@@ -112,8 +114,106 @@ describe("postprocessReportSections", () => {
     });
 
     const processed = postprocessReportSections(sections);
-    expect(processed.conclusion).toContain("20대 후반처럼 보이는 인상인데");
+    expect(processed.conclusion).toContain("30대 초반처럼 보이는 인상인데");
     expect(processed.conclusion).not.toContain("33살");
+  });
+
+  it("aligns age-range claims in the final conclusion to the displayed age range", () => {
+    const sections = makeSections({
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 30,
+        estimatedAgeReal: 25,
+        ageBucket: "under_35",
+        physiognomy: "",
+      },
+      conclusion: "20대 중반처럼 보이는 인상인데 20대 후반처럼 보이는 인상이라니 이상하다.",
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.conclusion).toContain("30대 초반처럼 보이는 인상");
+    expect(processed.conclusion).not.toContain("20대 중반");
+    expect(processed.conclusion).not.toContain("20대 후반");
+  });
+
+  it("cleans awkward age-derived narrative after aligning age ranges", () => {
+    const sections = makeSections({
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 30,
+        estimatedAgeReal: 25,
+        ageBucket: "under_35",
+        physiognomy: "30대 후반처럼 보이는 외모에서 오는 생기발랄함과 차분함이 공존하는 인상입니다.",
+      },
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.impression.physiognomy).toContain("30대 초반처럼 보이는 외모와 차분하고 정돈된 인상");
+    expect(processed.impression.physiognomy).not.toContain("30대 후반");
+    expect(processed.impression.physiognomy).not.toContain("외모에서 오는 생기발랄함");
+  });
+
+  it("cleans self-referential repeated age claims", () => {
+    const sections = makeSections({
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 30,
+        estimatedAgeReal: 25,
+        ageBucket: "under_35",
+        physiognomy: "",
+      },
+      conclusion: "20대 중반처럼 보이는 인상인데 20대 중반처럼 보이는 인상이라고 해놨네 ㅋㅋ 얼굴은 밋밋하다.",
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.conclusion).toContain("30대 초반처럼 보이는 인상입니다");
+    expect(processed.conclusion).toContain("얼굴은 밋밋하다");
+    expect(processed.conclusion).not.toContain("해놨네");
+  });
+
+  it("sanitizes grade slang for all reports", () => {
+    const sections = makeSections({
+      conclusion: "솔직히 ㅍㅌㅊ는 되냐? 대칭은 ㅆㅅㅌㅊ고 분위기는 ㅎㅌㅊ다.",
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "male" });
+    expect(processed.conclusion).not.toMatch(/ㅆㅅㅌㅊ|ㅅㅌㅊ|ㅍㅌㅊ|ㅎㅌㅊ/);
+    expect(processed.conclusion).toContain("평균권은");
+    expect(processed.conclusion).toContain("최상위권");
+    expect(processed.conclusion).toContain("하위권");
+  });
+
+  it("sanitizes harsh forum slang for female-selected reports while allowing lighter abbreviations", () => {
+    const sections = makeSections({
+      conclusion: "아따 시발 존나 억울하겠네 ㅋㅋ 구라치노? 솔직히 ㅍㅌㅊ는 되냐? 와꾸가 좀 애매하다. ㅅㅂ ㅈㄴ 와꾸바리 난리다.",
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "female" });
+    expect(processed.conclusion).not.toMatch(/[씨시]\s*발|존\s*나|좆|ㅍㅌㅊ|와꾸(?!바리)|치노/);
+    expect(processed.conclusion).toContain("진짜");
+    expect(processed.conclusion).toContain("너무");
+    expect(processed.conclusion).toContain("구라치냐?");
+    expect(processed.conclusion).toContain("평균권은");
+    expect(processed.conclusion).toContain("얼굴이");
+    expect(processed.conclusion).toContain("ㅅㅂ");
+    expect(processed.conclusion).toContain("ㅈㄴ");
+    expect(processed.conclusion).toContain("와꾸바리");
+  });
+
+  it("removes unexplained raw metric claims from the final conclusion", () => {
+    const sections = makeSections({
+      conclusion:
+        "얼굴 비율은 전반적으로 어색하다. 77.4%? 야 77.4%는 비율이 아니라 인생 망할 확률이다. 2.1도 입꼬리? 그건 웃는 게 아니라 굳은 표정이다.",
+    });
+
+    const processed = postprocessReportSections(sections);
+    expect(processed.conclusion).toContain("얼굴 비율은 전반적으로 어색하다");
+    expect(processed.conclusion).not.toContain("77.4%");
+    expect(processed.conclusion).not.toContain("2.1도");
+    expect(processed.conclusion).not.toContain("77.");
+    expect(processed.conclusion).not.toContain("2.");
+    expect(processed.conclusion).not.toContain("망할 확률");
+    expect(processed.conclusion).not.toContain("그건 웃는 게");
   });
 });
 

@@ -12,10 +12,45 @@ const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
 ];
 
 const FEMALE_BANNED_WORD_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/씨\s*발(?:아|놈|년|새끼)?/gi, "진짜"],
+  [/[씨시]\s*발(?:아|놈|년|새끼)?/gi, "진짜"],
+  [/좆\s*나(?:게)?|존\s*나(?:게)?/gi, "너무"],
+  [/좆/gi, ""],
+  [/와꾸가/gi, "얼굴이"],
+  [/와꾸는/gi, "얼굴은"],
+  [/와꾸를/gi, "얼굴을"],
+  [/와꾸도/gi, "얼굴도"],
+  [/와꾸(?!바리)/gi, "얼굴"],
+  [/이기야|앙기모띠|노무|게이야/gi, ""],
+  [/하노/g, "하냐"],
+  [/치노/g, "치냐"],
+  [/있노/g, "있냐"],
+  [/없노/g, "없냐"],
+  [/되노/g, "되냐"],
+  [/([가-힣])노([?!….]?)(?=\s|$)/g, "$1냐$2"],
+];
+
+const GENERAL_BANNED_SLANG_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/ㅆㅅㅌㅊ는/gi, "최상위권은"],
+  [/ㅆㅅㅌㅊ가/gi, "최상위권이"],
+  [/ㅆㅅㅌㅊ를/gi, "최상위권을"],
+  [/ㅆㅅㅌㅊ/gi, "최상위권"],
+  [/ㅍㅌㅊ는/gi, "평균권은"],
+  [/ㅍㅌㅊ가/gi, "평균권이"],
+  [/ㅍㅌㅊ를/gi, "평균권을"],
+  [/ㅍㅌㅊ/gi, "평균권"],
+  [/ㅅㅌㅊ는/gi, "상위권은"],
+  [/ㅅㅌㅊ가/gi, "상위권이"],
+  [/ㅅㅌㅊ를/gi, "상위권을"],
+  [/ㅅㅌㅊ/gi, "상위권"],
+  [/ㅎㅌㅊ는/gi, "하위권은"],
+  [/ㅎㅌㅊ가/gi, "하위권이"],
+  [/ㅎㅌㅊ를/gi, "하위권을"],
+  [/ㅎㅌㅊ/gi, "하위권"],
 ];
 
 const AGE_MENTION_RE = /(?<!\d)(\d{1,3})\s*(세|살)(?![기대차])/g;
+const AGE_RANGE_LABEL_RE = /(?:10대|20대|30대|40대|50대)\s*(?:초반|중반|후반)|60대\s*이상/g;
+const RAW_METRIC_MENTION_RE = /(?<!\d)(?:\d+(?:\.\d+)?\s*(?:%|도|mm|점)|0\.\d+)(?!\d)/;
 
 interface PostprocessOptions {
   gender?: Gender;
@@ -24,7 +59,8 @@ interface PostprocessOptions {
 export function postprocessReportSections(sections: ReportSections, options: PostprocessOptions = {}): ReportSections {
   const storageSanitized = sanitizeStorageMentions(sections);
   const ageAligned = alignUserFacingAgeMentions(storageSanitized);
-  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(ageAligned) : ageAligned;
+  const slangSanitized = sanitizeGeneralBannedSlang(ageAligned);
+  const sanitized = options.gender === "female" ? sanitizeFemaleBannedWords(slangSanitized) : slangSanitized;
   const isOver35 = sanitized.impression.ageBucket === "over_35";
   const fallbackConclusion = isOver35
     ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
@@ -42,16 +78,17 @@ export function alignUserFacingAgeMentions(sections: ReportSections): ReportSect
   const realAge = normalizedAge(sections.impression.estimatedAgeReal);
   if (displayAge === null) return sections;
 
-  const aligned = mapReportText(sections, (text) => alignAgeText(text, displayAge, realAge));
+  const aligned = mapReportText(sections, (text) => sanitizeAgeNarrative(alignAgeText(text, displayAge, realAge), displayAge));
   return {
     ...aligned,
-    conclusion: softenConclusionAgeClaims(sections.conclusion, displayAge, realAge),
+    conclusion: stripRawMetricClaimsFromConclusion(sanitizeAgeNarrative(softenConclusionAgeClaims(sections.conclusion, displayAge, realAge), displayAge)),
   };
 }
 
 function alignAgeText(text: string, displayAge: number, realAge: number | null): string {
   const displayDecade = Math.floor(displayAge / 10) * 10;
   const realDecade = realAge === null ? null : Math.floor(realAge / 10) * 10;
+  const displayRange = ageRangeLabel(displayAge);
 
   let next = text.replace(AGE_MENTION_RE, (match, rawAge: string, unit: string) => {
     const mentionedAge = Number(rawAge);
@@ -65,19 +102,21 @@ function alignAgeText(text: string, displayAge: number, realAge: number | null):
     next = next.replace(new RegExp(`${displayDecade}대\\s*(?:가\\s*)?(?:되면|된다면|들어서면|진입하면)`, "g"), "시간이 더 지나면");
   }
 
-  return next;
+  return alignAgeRangeMentions(next, displayRange);
 }
 
 function softenConclusionAgeClaims(text: string, displayAge: number, realAge: number | null): string {
-  const appearancePhrase = `${ageRangeLabel(realAge ?? displayAge)}처럼 보이는 인상`;
+  const appearancePhrase = `${ageRangeLabel(displayAge)}처럼 보이는 인상`;
 
-  return text.replace(AGE_MENTION_RE, (match, rawAge: string) => {
+  const softened = text.replace(AGE_MENTION_RE, (match, rawAge: string) => {
     const mentionedAge = Number(rawAge);
     if (!Number.isInteger(mentionedAge)) return match;
     const matchesDisplayAge = Math.abs(mentionedAge - displayAge) <= 1;
     const matchesRealAge = realAge !== null && Math.abs(mentionedAge - realAge) <= 1;
     return matchesDisplayAge || matchesRealAge ? appearancePhrase : match;
   });
+
+  return alignAgeRangeMentions(softened, ageRangeLabel(displayAge));
 }
 
 function ageRangeLabel(age: number): string {
@@ -88,6 +127,75 @@ function ageRangeLabel(age: number): string {
   const unit = age % 10;
   const segment = unit <= 3 ? "초반" : unit <= 6 ? "중반" : "후반";
   return `${decade}대 ${segment}`;
+}
+
+function stripRawMetricClaimsFromConclusion(conclusion: string): string {
+  const pieces = splitConclusionPieces(conclusion);
+  let removedPreviousMetricClaim = false;
+  const stripped = pieces
+    .filter((piece) => {
+      if (RAW_METRIC_MENTION_RE.test(piece)) {
+        removedPreviousMetricClaim = true;
+        return false;
+      }
+      if (removedPreviousMetricClaim && /^\s*(?:야\s*)?(?:그건|그게|그 수치|그 숫자|그 정도)/.test(piece)) {
+        removedPreviousMetricClaim = false;
+        return false;
+      }
+      removedPreviousMetricClaim = false;
+      return true;
+    })
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  return stripped || "전반적으로 인상과 비례가 호감도 형성에 불리하게 작용합니다.";
+}
+
+function alignAgeRangeMentions(text: string, displayRange: string): string {
+  const escapedDisplayRange = escapeRegExp(displayRange);
+  return text
+    .replace(AGE_RANGE_LABEL_RE, displayRange)
+    .replace(new RegExp(`${escapedDisplayRange}\\s*에서\\s*${escapedDisplayRange}`, "g"), displayRange)
+    .replace(new RegExp(`${escapedDisplayRange}\\s*,\\s*${escapedDisplayRange}`, "g"), displayRange)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeAgeNarrative(text: string, displayAge: number): string {
+  const displayRange = ageRangeLabel(displayAge);
+  return text
+    .replace(new RegExp(`${escapeRegExp(displayRange)}처럼 보이는 인상인데\\s*${escapeRegExp(displayRange)}처럼 보이는 인상이라고\\s*[^.!?。ㅋ]*(?:ㅋ+)?`, "g"), `${displayRange}처럼 보이는 인상입니다.`)
+    .replace(new RegExp(`${escapeRegExp(displayRange)}처럼 보이는 외모에서 오는\\s*`, "g"), `${displayRange}처럼 보이는 외모와 `)
+    .replace(new RegExp(`${escapeRegExp(displayRange)}에서 오는\\s*`, "g"), "")
+    .replace(/생기발랄함과 차분함이 공존하는 인상/g, "차분하고 정돈된 인상")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function splitConclusionPieces(text: string): string[] {
+  const pieces: string[] = [];
+  let start = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char !== "." && char !== "!" && char !== "?" && char !== "。") continue;
+    if (char === "." && isDigit(text[index - 1]) && isDigit(text[index + 1])) continue;
+
+    pieces.push(text.slice(start, index + 1));
+    start = index + 1;
+  }
+
+  if (start < text.length) pieces.push(text.slice(start));
+  return pieces.length > 0 ? pieces : [text];
+}
+
+function isDigit(char: string | undefined): boolean {
+  return Boolean(char && /\d/.test(char));
 }
 
 function normalizedAge(value: number): number | null {
@@ -111,6 +219,10 @@ function sanitizeStorageMentions(sections: ReportSections): ReportSections {
 
 function sanitizeFemaleBannedWords(sections: ReportSections): ReportSections {
   return mapReportText(sections, sanitizeFemaleBannedText);
+}
+
+function sanitizeGeneralBannedSlang(sections: ReportSections): ReportSections {
+  return mapReportText(sections, sanitizeGeneralBannedSlangText);
 }
 
 function mapReportText(sections: ReportSections, mapText: (text: string) => string): ReportSections {
@@ -174,6 +286,17 @@ function sanitizeSensitiveSexualExperience(text: string): string {
 
 function sanitizeFemaleBannedText(text: string): string {
   return FEMALE_BANNED_WORD_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text)
+    .replace(/([가-힣]+권)가는/g, "$1은")
+    .replace(/([가-힣]+권)는/g, "$1은")
+    .replace(/([가-힣]+권)가/g, "$1이")
+    .replace(/\.\s*\?/g, ".")
+    .replace(/^\?\s*/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeGeneralBannedSlangText(text: string): string {
+  return GENERAL_BANNED_SLANG_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text)
     .replace(/\s{2,}/g, " ")
     .trim();
 }

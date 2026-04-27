@@ -31,13 +31,26 @@ describe("analyze system prompt guardrails", () => {
   });
 
   it("bans 씨발 for female-selected users", () => {
-    expect(prompt).toContain("여성 선택 시 `씨발`은 금칙어입니다");
+    expect(prompt).toContain("여성 선택 시 디시/일베식 말투와 과한 남초 은어는 금지합니다");
+    expect(prompt).toContain("`~노`, `하노`, `와꾸`");
+    expect(prompt).toContain("`시발`, `씨발`");
+    expect(prompt).toContain("`ㅅㅂ`, `ㅈㄴ`과 밈 단어 `와꾸바리`는 사용할 수 있습니다");
+  });
+
+  it("bans grade shorthand slang for every user", () => {
+    expect(prompt).toContain("모든 성별에서 등급 축약어 `ㅆㅅㅌㅊ`, `ㅅㅌㅊ`, `ㅍㅌㅊ`, `ㅎㅌㅊ`를 쓰지 않습니다");
   });
 
   it("keeps internal age and user-facing age separated", () => {
     expect(prompt).toContain("사용자에게 보이는 문장에는 절대 직접 언급하지 않습니다");
     expect(prompt).toContain("결론을 제외한 사용자 노출 문장에 쓰는 *표시용 연령*");
     expect(prompt).toContain("`conclusion`에서는 현재 나이를 숫자로 단정하지 않습니다");
-    expect(prompt).toContain("20대 후반처럼 보이는 인상");
+    expect(prompt).toContain("한 문단 안에서 서로 다른 연령대 표현을 섞지 마세요");
+    expect(prompt).toContain("30대 초반처럼 보이는 인상");
+  });
+
+  it("bans raw metric numbers from the final conclusion", () => {
+    expect(prompt).toContain("`conclusion`에는 `%`, `도`, `mm`, 점수, 소수점 비율 같은 raw metric 숫자를 직접 쓰지 않습니다");
+    expect(prompt).toContain("숫자를 비틀어 \"망할 확률\", \"인생 점수\"처럼 재해석하지 마세요");
   });
 });
