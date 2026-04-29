@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { backfillStoredReportSections } from "@/lib/analysis/reportBackfill";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
-import { absoluteUrl, OG_IMAGE_PATH, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
+import { absoluteUrl, RESULT_DESCRIPTION, RESULT_TITLE, socialMetadata } from "@/lib/siteMetadata";
 import { getRequestOrigin } from "@/lib/siteUrl";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { reportSectionsSchema, type FaceReportRow, type FaceReportStatus } from "@/types/analysis";
@@ -53,15 +53,15 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const faceUrl = signed?.signedUrl ?? "";
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
-  const shareImageUrl = absoluteUrl(OG_IMAGE_PATH, baseUrl);
   const mainCopy = row.main_copy?.trim() || sections.mainCopy;
+  const shareImageUrl = absoluteUrl(`/api/share-image/${row.id}`, baseUrl);
   const isManualUpload = row.analysis_source === "manual_upload";
   const expiryText = isManualUpload ? "이 페이지는 생성 후 7일 뒤 사라집니다." : "이 페이지는 생성 후 24시간 뒤 사라집니다.";
 
   return (
     <main className="min-h-screen">
       <StopCameraOnMount />
-      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} reportId={row.id} expiryText={expiryText} />
+      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} reportId={row.id} mainCopy={mainCopy} expiryText={expiryText} />
       <MainCopy text={mainCopy} />
       <FaceImage src={faceUrl} createdAt={row.created_at} fit={isManualUpload ? "contain" : "cover"} />
       <DetailedReport sections={sections} />

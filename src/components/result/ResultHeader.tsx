@@ -13,11 +13,13 @@ export function ResultHeader({
   shareImageUrl,
   resultUrl,
   reportId,
+  mainCopy,
   expiryText = "이 페이지는 생성 후 24시간 뒤 사라집니다.",
 }: {
   shareImageUrl: string;
   resultUrl: string;
   reportId: string;
+  mainCopy: string;
   expiryText?: string;
 }) {
   const [kakaoReady, setKakaoReady] = useState(false);
@@ -44,11 +46,11 @@ export function ResultHeader({
             className="px-3 sm:px-4"
             disabled={!kakaoReady}
             aria-label="카카오톡 공유"
-            title={kakaoReady ? "카카오톡 공유 - 얼굴 사진 미리보기 제외" : "카카오톡 공유 사용 불가"}
+            title={kakaoReady ? "카카오톡 공유" : "카카오톡 공유 사용 불가"}
             icon={<KakaoIcon className="h-5 w-5 rounded-[5px]" />}
             onClick={() =>
               shareKakaoFeed({
-                title: "AI 얼평보고서 결과",
+                title: mainCopy || "AI 얼평보고서 결과",
                 description: `AI 얼굴 분석 결과 - ${expiryText}`,
                 imageUrl: shareImageUrl,
                 resultUrl,
