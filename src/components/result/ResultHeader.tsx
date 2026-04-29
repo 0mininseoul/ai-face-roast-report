@@ -12,12 +12,14 @@ import { FeedbackButton } from "@/components/result/FeedbackButton";
 export function ResultHeader({
   shareImageUrl,
   resultUrl,
+  shareResultUrl = resultUrl,
   reportId,
   mainCopy,
   expiryText = "이 페이지는 생성 후 24시간 뒤 사라집니다.",
 }: {
   shareImageUrl: string;
   resultUrl: string;
+  shareResultUrl?: string;
   reportId: string;
   mainCopy: string;
   expiryText?: string;
@@ -53,7 +55,7 @@ export function ResultHeader({
                 title: mainCopy || "AI 얼평보고서 결과",
                 description: `AI 얼굴 분석 결과 - ${expiryText}`,
                 imageUrl: shareImageUrl,
-                resultUrl,
+                resultUrl: shareResultUrl,
               })
             }
           >

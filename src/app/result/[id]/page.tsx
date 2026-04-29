@@ -19,11 +19,51 @@ import { reportSectionsSchema, type FaceReportRow, type FaceReportStatus } from 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { [key: string]: string | string[] | undefined };
+}): Promise<Metadata> {
+  const baseUrl = getRequestOrigin();
+  const shareQuery = typeof searchParams?.share === "string" ? `?share=${encodeURIComponent(searchParams.share)}` : "";
+  const path = `/result/${params.id}${shareQuery}`;
+
+  try {
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase.from("face_reports").select("*").eq("id", params.id).single();
+    if (!error && data) {
+      const row = data as FaceReportRow;
+      const isComplete = row.status === "complete" && row.face_image_path && row.report_sections_json && new Date(row.expires_at).getTime() > Date.now();
+      if (isComplete) {
+        const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), {
+          gender: row.gender,
+          tone: row.analysis_tone ?? "roast",
+        });
+        const mainCopy = row.main_copy?.trim() || sections.mainCopy || RESULT_TITLE;
+        const expiryText = row.analysis_source === "manual_upload" ? "이 페이지는 생성 후 7일 뒤 사라집니다." : "이 페이지는 생성 후 24시간 뒤 사라집니다.";
+        return {
+          ...socialMetadata({
+            baseUrl,
+            path,
+            title: mainCopy,
+            description: `AI 얼굴 분석 결과 - ${expiryText}`,
+            imageUrl: absoluteUrl(`/api/share-image/${row.id}`, baseUrl),
+            imageAlt: mainCopy,
+          }),
+          title: RESULT_TITLE,
+        };
+      }
+    }
+  } catch {
+    // Fall back to the generic metadata below when a result is unavailable.
+  }
+
   return {
     ...socialMetadata({
-      baseUrl: getRequestOrigin(),
-      path: `/result/${params.id}`,
+      baseUrl,
+      path,
       title: RESULT_TITLE,
       description: RESULT_DESCRIPTION,
     }),
@@ -55,13 +95,14 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const resultUrl = `${baseUrl}/result/${row.id}`;
   const mainCopy = row.main_copy?.trim() || sections.mainCopy;
   const shareImageUrl = absoluteUrl(`/api/share-image/${row.id}`, baseUrl);
+  const shareResultUrl = `${resultUrl}?share=kakao-v2`;
   const isManualUpload = row.analysis_source === "manual_upload";
   const expiryText = isManualUpload ? "이 페이지는 생성 후 7일 뒤 사라집니다." : "이 페이지는 생성 후 24시간 뒤 사라집니다.";
 
   return (
     <main className="min-h-screen">
       <StopCameraOnMount />
-      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} reportId={row.id} mainCopy={mainCopy} expiryText={expiryText} />
+      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} shareResultUrl={shareResultUrl} reportId={row.id} mainCopy={mainCopy} expiryText={expiryText} />
       <MainCopy text={mainCopy} />
       <FaceImage src={faceUrl} createdAt={row.created_at} fit={isManualUpload ? "contain" : "cover"} />
       <DetailedReport sections={sections} />

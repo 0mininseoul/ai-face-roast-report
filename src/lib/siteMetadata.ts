@@ -13,15 +13,15 @@ export function absoluteUrl(path: string, baseUrl: string) {
   return new URL(path, baseUrl).toString();
 }
 
-export function socialImage(baseUrl: string) {
-  const imageUrl = absoluteUrl(OG_IMAGE_PATH, baseUrl);
+export function socialImage(baseUrl: string, options: { imageUrl?: string; imagePath?: string; alt?: string } = {}) {
+  const imageUrl = options.imageUrl ?? absoluteUrl(options.imagePath ?? OG_IMAGE_PATH, baseUrl);
 
   return {
     url: imageUrl,
     secureUrl: imageUrl,
     width: OG_IMAGE_WIDTH,
     height: OG_IMAGE_HEIGHT,
-    alt: OG_IMAGE_ALT,
+    alt: options.alt ?? OG_IMAGE_ALT,
     type: "image/png",
   };
 }
@@ -31,14 +31,20 @@ export function socialMetadata({
   path = "/",
   title = SITE_TITLE,
   description = SITE_DESCRIPTION,
+  imageUrl,
+  imagePath,
+  imageAlt,
 }: {
   baseUrl: string;
   path?: string;
   title?: string;
   description?: string;
+  imageUrl?: string;
+  imagePath?: string;
+  imageAlt?: string;
 }): Metadata {
   const url = absoluteUrl(path, baseUrl);
-  const image = socialImage(baseUrl);
+  const image = socialImage(baseUrl, { imageUrl, imagePath, alt: imageAlt });
 
   return {
     metadataBase: new URL(baseUrl),
