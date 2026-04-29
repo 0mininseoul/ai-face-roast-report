@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import presets from "../content/main-copy-presets.json";
-import { pickMainCopy } from "@/lib/copy/mainCopy";
+import balancedPresets from "../content/balanced-main-copy-presets.json";
+import { pickBalancedMainCopy, pickMainCopy } from "@/lib/copy/mainCopy";
 
 describe("pickMainCopy", () => {
   it("returns a stable preset for the same seed", () => {
@@ -38,6 +39,24 @@ describe("pickMainCopy", () => {
       expect(pool.has(female)).toBe(true);
       expect(male).not.toMatch(/ㅋ{2,}/);
       expect(female).not.toMatch(/ㅋ{2,}/);
+    }
+  });
+
+  it("draws balanced copy from the editable balanced preset file", () => {
+    const pool = new Set<string>([
+      ...balancedPresets.under_35.neutral,
+      ...balancedPresets.under_35.male,
+      ...balancedPresets.under_35.female,
+      ...balancedPresets.over_35.neutral,
+      ...balancedPresets.over_35.male,
+      ...balancedPresets.over_35.female,
+    ]);
+
+    for (let index = 0; index < 12; index += 1) {
+      const copy = pickBalancedMainCopy("female", index % 2 === 0 ? "under_35" : "over_35", `balanced-${index}`);
+      expect(pool.has(copy)).toBe(true);
+      expect(copy).not.toMatch(/[ㅅㅆ]\s*ㅂ|[씨시]\s*발|좆|존\s*나|병\s*신|와꾸|ㅋ{2,}/);
+      expect(copy).not.toMatch(/조명|카메라|앵글|각도|거리|촬영/);
     }
   });
 });

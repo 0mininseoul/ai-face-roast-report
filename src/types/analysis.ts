@@ -77,6 +77,9 @@ export type AgeBucket = "under_35" | "over_35";
 
 export type ReportSections = z.infer<typeof reportSectionsSchema>;
 
+export type AnalysisSource = "live_webcam" | "manual_upload";
+export type AnalysisTone = "roast" | "balanced";
+
 export type AnalysisJobStatus = "queued" | "processing" | "retrying" | "complete" | "failed";
 export type LegacyAnalysisJobStatus = "analyzing";
 export type FaceReportStatus = AnalysisJobStatus | LegacyAnalysisJobStatus;
@@ -93,6 +96,10 @@ export interface FaceReportRow {
   report_sections_json: ReportSections | null;
   main_copy: string | null;
   live_feed_json: string[];
+  analysis_source: AnalysisSource;
+  analysis_tone: AnalysisTone;
+  admin_note: string | null;
+  manual_detected_face_count: number | null;
   app_user_id: string | null;
   user_agent: string | null;
   ip_hash: string | null;

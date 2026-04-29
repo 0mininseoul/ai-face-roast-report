@@ -1,4 +1,4 @@
-import type { Gender, ReportSections } from "@/types/analysis";
+import type { AnalysisTone, Gender, ReportSections } from "@/types/analysis";
 
 const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/모\s*쏠\s*아\s*다/gi, "연애 운까지 박살난 타입"],
@@ -68,25 +68,56 @@ const GENERAL_BANNED_SLANG_REPLACEMENTS: Array<[RegExp, string]> = [
   [/ㅎㅌㅊ/gi, "하위권"],
 ];
 
+const BALANCED_TONE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/[ㅅㅆ]\s*ㅂ/gi, "정말"],
+  [/[씨시]\s*발(?:아|놈|년|새끼)?/gi, "정말"],
+  [/좆\s*나(?:게)?|존\s*나(?:게)?/gi, "매우"],
+  [/좆/gi, ""],
+  [/병\s*신/gi, "아쉬운"],
+  [/와꾸/gi, "얼굴"],
+  [/개\s*박살/gi, "불균형"],
+  [/공개\s*처형문?/gi, "상세 분석"],
+  [/외출\s*자제/gi, "촬영 조건 점검"],
+  [/처참(?:하다|한|함|하게)?/gi, "아쉬운 편"],
+  [/한심(?:하다|한|함|하게)?/gi, "개선 여지가 있는 편"],
+  [/못\s*생(?:김|겼|긴|겼다|기|겨)?/gi, "호감도 형성에 불리한"],
+];
+
 const AGE_MENTION_RE = /(?<!\d)(\d{1,3})\s*(세|살)(?![기대차])/g;
 const AGE_RANGE_LABEL_RE = /(?:10대|20대|30대|40대|50대)\s*(?:초반|중반|후반)|60대\s*이상/g;
 const RAW_METRIC_MENTION_RE = /(?<!\d)(?:\d+(?:\.\d+)?\s*(?:%|도|mm|점)|0\.\d+)(?!\d)/;
 
 interface PostprocessOptions {
   gender?: Gender;
+  tone?: AnalysisTone;
 }
 
 export function postprocessReportSections(sections: ReportSections, options: PostprocessOptions = {}): ReportSections {
+  const hasOriginalConclusion = Boolean(sections.conclusion?.trim());
   const storageSanitized = sanitizeStorageMentions(sections);
   const ageAligned = alignUserFacingAgeMentions(storageSanitized);
   const slangSanitized = sanitizeGeneralBannedSlang(ageAligned);
   const femaleSanitized = options.gender === "female" ? sanitizeFemaleBannedWords(slangSanitized) : slangSanitized;
   const usesPoliteTone = usesPoliteReportTone(femaleSanitized);
-  const sanitized = usesPoliteTone ? sanitizePoliteTone(femaleSanitized) : femaleSanitized;
+  const toneSanitized = options.tone === "balanced" ? sanitizeBalancedTone(femaleSanitized) : femaleSanitized;
+  const sanitized = usesPoliteTone || options.tone === "balanced" ? sanitizePoliteTone(toneSanitized) : toneSanitized;
   const fallbackConclusion = usesPoliteTone
     ? "전반적으로 호감도 형성에 불리한 신호가 다수 관찰됩니다."
     : "최종 결론은 처참하다.";
-  const conclusion = sanitized.conclusion?.trim() || fallbackConclusion;
+  const balancedConclusion =
+    "전체적으로 안정적인 지점과 개선 여지가 함께 관찰됩니다. 첫인상은 크게 무너지지 않지만, 표정이 너무 중립적이라 호감도보다 출석 체크가 먼저 떠오르는 타입입니다.";
+  const conclusion =
+    options.tone === "balanced" && !hasOriginalConclusion
+      ? balancedConclusion
+      : sanitized.conclusion?.trim() || (options.tone === "balanced" ? balancedConclusion : fallbackConclusion);
+  if (options.tone === "balanced") {
+    return {
+      ...sanitized,
+      conclusion: stripCasualLaughs(conclusion),
+      mainCopy: stripCasualLaughs(sanitized.mainCopy),
+    };
+  }
+
   return {
     ...sanitized,
     conclusion: usesPoliteTone ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
@@ -246,6 +277,10 @@ function sanitizePoliteTone(sections: ReportSections): ReportSections {
   return mapReportText(sections, sanitizePoliteToneText);
 }
 
+function sanitizeBalancedTone(sections: ReportSections): ReportSections {
+  return mapReportText(sections, sanitizeBalancedToneText);
+}
+
 function sanitizeGeneralBannedSlang(sections: ReportSections): ReportSections {
   return mapReportText(sections, sanitizeGeneralBannedSlangText);
 }
@@ -333,6 +368,12 @@ function sanitizePoliteToneText(text: string): string {
 
 function sanitizeGeneralBannedSlangText(text: string): string {
   return GENERAL_BANNED_SLANG_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text)
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeBalancedToneText(text: string): string {
+  return stripCasualLaughs(BALANCED_TONE_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text))
     .replace(/\s{2,}/g, " ")
     .trim();
 }

@@ -13,10 +13,12 @@ export function ResultHeader({
   shareImageUrl,
   resultUrl,
   reportId,
+  expiryText = "이 페이지는 생성 후 24시간 뒤 사라집니다.",
 }: {
   shareImageUrl: string;
   resultUrl: string;
   reportId: string;
+  expiryText?: string;
 }) {
   const [kakaoReady, setKakaoReady] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -47,7 +49,7 @@ export function ResultHeader({
             onClick={() =>
               shareKakaoFeed({
                 title: "AI 얼평보고서 결과",
-                description: "AI 얼굴 분석 결과 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
+                description: `AI 얼굴 분석 결과 - ${expiryText}`,
                 imageUrl: shareImageUrl,
                 resultUrl,
               })
@@ -86,7 +88,7 @@ export function ResultHeader({
       <div className="border-t border-border/70 bg-black/24 px-4 py-2 sm:px-8 sm:py-3">
         <div className="mx-auto flex w-fit items-center justify-center gap-2 rounded-full border border-accent-info/20 bg-accent-info/8 px-3 py-1.5 text-xs font-black text-text-primary shadow-[0_0_32px_rgb(125_216_255_/_0.08)] sm:px-4 sm:py-2 sm:text-sm">
           <Clock3 className="h-3.5 w-3.5 text-accent-info sm:h-4 sm:w-4" />
-          <span>이 페이지는 생성 후 24시간 뒤 사라집니다.</span>
+          <span>{expiryText}</span>
         </div>
       </div>
     </header>

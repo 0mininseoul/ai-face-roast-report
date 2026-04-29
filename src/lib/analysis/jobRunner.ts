@@ -1,13 +1,16 @@
 import "server-only";
 
 import { getGenAi, MODEL_ANALYSIS, MODEL_ANALYSIS_FALLBACK, MODEL_ANALYSIS_FAST } from "@/lib/gemini/client";
+import { buildAnalysisSystemInstruction } from "@/lib/gemini/manualPrompt";
 import { buildAnalysisModelChain } from "@/lib/gemini/modelSelection";
 import { buildAnalyzeUserPrompt } from "@/lib/gemini/promptText";
 import { readAnalyzeSystemPrompt } from "@/lib/gemini/prompts";
 import { extractImageSource, normalizeGeminiReport, REPORT_RESPONSE_JSON_SCHEMA } from "@/lib/gemini/reportSchema";
-import { pickMainCopy } from "@/lib/copy/mainCopy";
+import { pickBalancedMainCopy, pickMainCopy } from "@/lib/copy/mainCopy";
 import { analysisErrorMessage, extractErrorText, isRetryableAnalysisError } from "@/lib/analysis/errors";
+import { applyBalancedAgePolicy } from "@/lib/analysis/agePolicy";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
+import { shouldRejectImageSourceForAnalysis } from "@/lib/analysis/sourcePolicy";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
 import type { AnalysisJobStatus, FaceReportRow, FaceReportStatus, ReportSections } from "@/types/analysis";
@@ -46,7 +49,6 @@ const DEFAULT_FALLBACK_TIMEOUT_MS = 55_000;
 const DEFAULT_FAST_TIMEOUT_MS = 30_000;
 const DEFAULT_PRIMARY_RETRY_ATTEMPTS = 2;
 const DEFAULT_PRIMARY_RETRY_DELAY_MS = 8_000;
-
 export async function drainAnalysisQueue({
   targetId = null,
   sessionId = null,
@@ -195,7 +197,9 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
 
   const supabase = getServerSupabase();
   const imageBase64 = await downloadFaceImage(row.face_image_path);
-  const systemInstruction = await readAnalyzeSystemPrompt();
+  const analysisSource = row.analysis_source ?? "live_webcam";
+  const analysisTone = row.analysis_tone ?? "roast";
+  const systemInstruction = buildAnalysisSystemInstruction(await readAnalyzeSystemPrompt(), analysisSource, analysisTone);
   const startedAt = Date.now();
   const jobBudgetMs = context.jobBudgetMs && context.jobBudgetMs > 0 ? context.jobBudgetMs : intEnv("ANALYSIS_JOB_BUDGET_MS", DEFAULT_JOB_BUDGET_MS);
   const modelChain = buildAnalysisModelChain({
@@ -245,13 +249,17 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
       const raw = await generateReportJson({
         model,
         systemInstruction,
-        prompt: buildAnalyzeUserPrompt(row.gender, row.metrics_json, row.id),
+        prompt: buildAnalyzeUserPrompt(row.gender, row.metrics_json, row.id, {
+          analysisSource,
+          analysisTone,
+          manualDetectedFaceCount: row.manual_detected_face_count,
+        }),
         imageBase64,
         timeoutMs,
       });
       const rawJson = parseRawReportJson(raw);
       const imageSource = extractImageSource(rawJson);
-      if (imageSource && imageSource !== "real_webcam") {
+      if (shouldRejectImageSourceForAnalysis(imageSource, analysisSource)) {
         await logServiceEvent({
           sessionId: context.sessionId,
           reportId: row.id,
@@ -262,13 +270,28 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
         });
         throw new Error(`non_live_input:${imageSource}`);
       }
+      if (imageSource && imageSource !== "real_webcam") {
+        await logServiceEvent({
+          sessionId: context.sessionId,
+          reportId: row.id,
+          eventName: "analysis_manual_non_live_input_accepted",
+          phase: "server_worker",
+          level: "info",
+          payload: { model, imageSource, analysisSource },
+        });
+      }
       const parsed = normalizeGeminiReport(rawJson);
+      const parsedForTone = analysisTone === "balanced" ? applyBalancedAgePolicy(parsed) : parsed;
+      const mainCopy =
+        analysisTone === "balanced"
+          ? pickBalancedMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id)
+          : pickMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id);
       const sections = postprocessReportSections(
         {
-          ...parsed,
-          mainCopy: pickMainCopy(row.gender, parsed.impression.ageBucket, row.id),
+          ...parsedForTone,
+          mainCopy,
         },
-        { gender: row.gender },
+        { gender: row.gender, tone: analysisTone },
       );
       await markJobComplete(row, sections, model);
       await logServiceEvent({
@@ -281,6 +304,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
           totalChars: raw.length,
           ageBucket: sections.impression.ageBucket,
           ageReal: parsed.impression.estimatedAgeReal,
+          analysisTone,
         },
       });
       return "complete";

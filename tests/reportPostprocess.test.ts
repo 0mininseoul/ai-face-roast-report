@@ -264,6 +264,26 @@ describe("postprocessReportSections", () => {
     expect(processed.conclusion).not.toContain("망할 확률");
     expect(processed.conclusion).not.toContain("그건 웃는 게");
   });
+
+  it("keeps balanced reports profanity-free without adding mocking laughter", () => {
+    const sections = makeSections({
+      conclusion: "씨발 대칭은 괜찮은데 와꾸가 처참하다 ㅋㅋ.",
+      mainCopy: "와꾸 진짜 좆박았네 ㅋㅋ",
+    });
+
+    const processed = postprocessReportSections(sections, { gender: "male", tone: "balanced" });
+    const text = [processed.conclusion, processed.mainCopy].join(" ");
+    expect(text).not.toMatch(/[씨시]\s*발|좆|와꾸|처참|ㅋ{2,}|공개 처형문/);
+    expect(text).toContain("대칭은 괜찮은데");
+    expect(text).toContain("얼굴");
+  });
+
+  it("uses a dry humorous fallback for empty balanced conclusions", () => {
+    const processed = postprocessReportSections(makeSections({ conclusion: "" }), { tone: "balanced" });
+
+    expect(processed.conclusion).toContain("출석 체크");
+    expect(processed.conclusion).not.toMatch(/촬영|조명|카메라|ㅋ{2,}|[씨시]\s*발|좆|와꾸/);
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

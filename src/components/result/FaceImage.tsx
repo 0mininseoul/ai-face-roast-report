@@ -9,12 +9,15 @@ const KST_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   hour12: true,
 });
 
-export function FaceImage({ src, createdAt }: { src: string; createdAt: string }) {
+export function FaceImage({ src, createdAt, fit = "cover" }: { src: string; createdAt: string; fit?: "cover" | "contain" }) {
+  const imageClassName =
+    fit === "contain" ? "max-h-[74vh] w-full rounded-xl bg-black/40 object-contain" : "aspect-video w-full rounded-xl object-cover";
+
   return (
     <section className="mx-auto mb-10 max-w-6xl px-4 text-center sm:mb-16 sm:px-8">
       <div className="glass-panel mx-auto overflow-hidden rounded-2xl p-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="분석에 사용된 얼굴 캡쳐" className="aspect-video w-full rounded-xl object-cover" />
+        <img src={src} alt="분석에 사용된 얼굴 캡쳐" className={imageClassName} />
       </div>
       <p className="mt-4 text-xs text-text-faint">
         {formatKstTimestamp(createdAt)}

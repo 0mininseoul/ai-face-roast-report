@@ -44,7 +44,10 @@ export default async function ResultPage({ params }: { params: { id: string } })
   if (isPendingResultStatus(row.status)) return <PendingResultPage status={row.status} retryAfter={row.retry_after ?? null} />;
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) notFound();
 
-  const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), { gender: row.gender });
+  const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), {
+    gender: row.gender,
+    tone: row.analysis_tone ?? "roast",
+  });
   const imageTtlSeconds = Math.max(1, Math.min(60 * 60 * 24, Math.floor((expiresAt - Date.now()) / 1000)));
   const { data: signed } = await supabase.storage.from("face-images").createSignedUrl(row.face_image_path, imageTtlSeconds);
   const faceUrl = signed?.signedUrl ?? "";
@@ -52,13 +55,15 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const resultUrl = `${baseUrl}/result/${row.id}`;
   const shareImageUrl = absoluteUrl(OG_IMAGE_PATH, baseUrl);
   const mainCopy = row.main_copy?.trim() || sections.mainCopy;
+  const isManualUpload = row.analysis_source === "manual_upload";
+  const expiryText = isManualUpload ? "이 페이지는 생성 후 7일 뒤 사라집니다." : "이 페이지는 생성 후 24시간 뒤 사라집니다.";
 
   return (
     <main className="min-h-screen">
       <StopCameraOnMount />
-      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} reportId={row.id} />
+      <ResultHeader shareImageUrl={shareImageUrl} resultUrl={resultUrl} reportId={row.id} expiryText={expiryText} />
       <MainCopy text={mainCopy} />
-      <FaceImage src={faceUrl} createdAt={row.created_at} />
+      <FaceImage src={faceUrl} createdAt={row.created_at} fit={isManualUpload ? "contain" : "cover"} />
       <DetailedReport sections={sections} />
     </main>
   );

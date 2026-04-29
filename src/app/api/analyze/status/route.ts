@@ -61,7 +61,10 @@ export async function GET(req: NextRequest) {
       reportId: row.id,
       status: "complete",
       message: analysisStatusMessage(row),
-      sections: postprocessReportSections(reportSectionsSchema.parse(row.report_sections_json), { gender: row.gender }),
+      sections: postprocessReportSections(reportSectionsSchema.parse(row.report_sections_json), {
+        gender: row.gender,
+        tone: row.analysis_tone ?? "roast",
+      }),
       modelUsed: row.model_used ?? null,
     } satisfies AnalyzeStatusResponse);
   }
