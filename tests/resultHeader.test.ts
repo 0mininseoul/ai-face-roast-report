@@ -23,12 +23,12 @@ describe("ResultHeader", () => {
     vi.clearAllMocks();
   });
 
-  it("shares Kakao previews with the result main copy and generated face image", async () => {
+  it("shares Kakao previews with the result main copy and original face image", async () => {
     render(
       createElement(ResultHeader, {
-        shareImageUrl: "https://example.com/api/share-image/report-1",
+        shareImageUrl: "https://example.com/api/share-face/report-1?v=kakao-v3",
         resultUrl: "https://example.com/result/report-1",
-        shareResultUrl: "https://example.com/result/report-1?share=kakao-v2",
+        shareResultUrl: "https://example.com/result/report-1?share=kakao-v3",
         reportId: "report-1",
         mainCopy: "길에서 번호 한 번쯤은 따이실 법한 얼굴입니다",
         expiryText: "이 페이지는 생성 후 24시간 뒤 사라집니다.",
@@ -42,8 +42,8 @@ describe("ResultHeader", () => {
     expect(mocks.shareKakaoFeed).toHaveBeenCalledWith({
       title: "길에서 번호 한 번쯤은 따이실 법한 얼굴입니다",
       description: "AI 얼굴 분석 결과 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
-      imageUrl: "https://example.com/api/share-image/report-1",
-      resultUrl: "https://example.com/result/report-1?share=kakao-v2",
+      imageUrl: "https://example.com/api/share-face/report-1?v=kakao-v3",
+      resultUrl: "https://example.com/result/report-1?share=kakao-v3",
     });
   });
 });

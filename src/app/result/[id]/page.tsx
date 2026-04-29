@@ -49,8 +49,11 @@ export async function generateMetadata({
             path,
             title: mainCopy,
             description: `AI 얼굴 분석 결과 - ${expiryText}`,
-            imageUrl: absoluteUrl(`/api/share-image/${row.id}`, baseUrl),
+            imageUrl: absoluteUrl(`/api/share-face/${row.id}?v=kakao-v3`, baseUrl),
             imageAlt: mainCopy,
+            imageWidth: null,
+            imageHeight: null,
+            imageType: null,
           }),
           title: RESULT_TITLE,
         };
@@ -94,8 +97,8 @@ export default async function ResultPage({ params }: { params: { id: string } })
   const baseUrl = getRequestOrigin();
   const resultUrl = `${baseUrl}/result/${row.id}`;
   const mainCopy = row.main_copy?.trim() || sections.mainCopy;
-  const shareImageUrl = absoluteUrl(`/api/share-image/${row.id}`, baseUrl);
-  const shareResultUrl = `${resultUrl}?share=kakao-v2`;
+  const shareImageUrl = absoluteUrl(`/api/share-face/${row.id}?v=kakao-v3`, baseUrl);
+  const shareResultUrl = `${resultUrl}?share=kakao-v3`;
   const isManualUpload = row.analysis_source === "manual_upload";
   const expiryText = isManualUpload ? "이 페이지는 생성 후 7일 뒤 사라집니다." : "이 페이지는 생성 후 24시간 뒤 사라집니다.";
 
