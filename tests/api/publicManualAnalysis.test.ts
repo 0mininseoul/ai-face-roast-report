@@ -71,7 +71,7 @@ describe("POST /api/manual-analysis", () => {
     mocks.checkRateLimit.mockReturnValue({ ok: true, retryAfterSec: 0 });
     mocks.ipFromRequest.mockReturnValue("203.0.113.2");
     mocks.ipHash.mockResolvedValue("hashed-ip");
-    checkDailyQuotaMock.mockResolvedValue({ ok: true, count: 0, limit: 3, windowHours: 24, matchedBy: "ip_and_device" });
+    checkDailyQuotaMock.mockResolvedValue({ ok: true, count: 0, limit: 5, windowHours: 24, matchedBy: "ip_and_device" });
     recordQuotaUsageMock.mockResolvedValue(undefined);
     mocks.single.mockResolvedValue({ data: { id: REPORT_ID }, error: null });
     mocks.select.mockReturnValue({ single: mocks.single });
@@ -119,7 +119,7 @@ describe("POST /api/manual-analysis", () => {
   });
 
   it("rejects daily quota before storage work", async () => {
-    checkDailyQuotaMock.mockResolvedValueOnce({ ok: false, count: 3, limit: 3, windowHours: 24, matchedBy: "ip_and_device" });
+    checkDailyQuotaMock.mockResolvedValueOnce({ ok: false, count: 5, limit: 5, windowHours: 24, matchedBy: "ip_and_device" });
 
     const response = await POST(manualRequest(validBody()));
     const body = await response.json();

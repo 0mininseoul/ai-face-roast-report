@@ -2,7 +2,7 @@ import "server-only";
 
 import { getServerSupabase } from "@/lib/supabase/server";
 
-export const DAILY_QUOTA_LIMIT = 3;
+export const DAILY_QUOTA_LIMIT = 5;
 const QUOTA_WINDOW_HOURS = 24;
 
 export interface QuotaCheckResult {

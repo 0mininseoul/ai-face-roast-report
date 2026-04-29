@@ -3,7 +3,7 @@ export function analysisErrorMessage(error: unknown): string {
   const normalized = raw.toLowerCase();
 
   if (normalized.includes("daily_limit_reached")) {
-    return "오늘은 이미 3회 분석을 완료했어요. 24시간 뒤에 다시 시도해 주세요.";
+    return "오늘은 이미 5회 분석을 완료했어요. 24시간 뒤에 다시 시도해 주세요.";
   }
 
   if (normalized.includes("non_live_input")) {

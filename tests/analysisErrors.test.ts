@@ -15,4 +15,8 @@ describe("analysis errors", () => {
     expect(isRetryableAnalysisError(timeoutError)).toBe(true);
     expect(analysisErrorMessage(timeoutError)).toBe("AI 분석 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.");
   });
+
+  it("uses the five-analysis daily quota in the user-facing limit message", () => {
+    expect(analysisErrorMessage("daily_limit_reached")).toBe("오늘은 이미 5회 분석을 완료했어요. 24시간 뒤에 다시 시도해 주세요.");
+  });
 });
