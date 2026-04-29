@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, ImageUp, Loader2, RefreshCcw } from "lucide-react";
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { getFaceImageLandmarker } from "@/lib/facemesh/faceLandmarker";
 import { computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
+import { getClientDeviceId } from "@/lib/telemetry/client";
 import type { AnalysisTone, FaceMetrics, Gender, Landmark } from "@/types/analysis";
 
 const MAX_ORIGINAL_BYTES = 8 * 1024 * 1024;
@@ -25,15 +28,20 @@ interface CreatedManualReport {
   reportId: string;
   status: "queued" | "processing" | "retrying";
   publicResultUrl: string;
-  adminResultUrl: string;
+  adminResultUrl?: string;
 }
 
 type PreparationStatus = "idle" | "preparing" | "ready" | "error";
+type ManualAnalysisMode = "public" | "admin";
 
-export function ManualAnalysisClient() {
+export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysisMode }) {
+  const router = useRouter();
   const [gender, setGender] = useState<Gender>("male");
   const [analysisTone, setAnalysisTone] = useState<AnalysisTone>("roast");
   const [adminNote, setAdminNote] = useState("");
+  const [age, setAge] = useState(false);
+  const [expires, setExpires] = useState(false);
+  const [lawsuit, setLawsuit] = useState(false);
   const [prepared, setPrepared] = useState<PreparedManualImage | null>(null);
   const [status, setStatus] = useState<PreparationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +49,10 @@ export function ManualAnalysisClient() {
   const [created, setCreated] = useState<CreatedManualReport | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const canSubmit = status === "ready" && Boolean(prepared) && !submitting;
+  const isAdmin = mode === "admin";
+  const endpoint = isAdmin ? "/admindata/api/manual-analysis" : "/api/manual-analysis";
+  const consentReady = isAdmin || (age && expires && lawsuit);
+  const canSubmit = status === "ready" && Boolean(prepared) && consentReady && !submitting;
   const faceWarning = useMemo(() => {
     if (!prepared) return null;
     if (prepared.detectedFaceCount > 1) return `얼굴 ${prepared.detectedFaceCount}개 감지됨. MediaPipe 첫 번째 얼굴로 분석합니다.`;
@@ -79,18 +90,19 @@ export function ManualAnalysisClient() {
     setCreated(null);
 
     try {
-      const response = await fetch("/admindata/api/manual-analysis", {
+      const response = await fetch(endpoint, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gender,
           analysisTone,
+          deviceId: getClientDeviceId(),
           imageBase64: prepared.imageBase64,
           metrics: prepared.metrics,
           landmarks: prepared.landmarks,
           manualDetectedFaceCount: prepared.detectedFaceCount,
-          adminNote: adminNote.trim() || null,
+          ...(isAdmin ? { adminNote: adminNote.trim() || null } : {}),
         }),
       });
       const payload = (await response.json().catch(() => null)) as (CreatedManualReport & { error?: string; message?: string }) | null;
@@ -98,12 +110,13 @@ export function ManualAnalysisClient() {
         throw new Error(payload?.message || payload?.error || "수동 분석 요청을 생성하지 못했습니다.");
       }
       setCreated(payload);
+      if (!isAdmin) router.push(`/result/${payload.reportId}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "수동 분석 요청 중 오류가 발생했습니다.");
+      setError(caught instanceof Error ? caught.message : "이미지 분석 요청 중 오류가 발생했습니다.");
     } finally {
       setSubmitting(false);
     }
-  }, [adminNote, analysisTone, gender, prepared]);
+  }, [adminNote, analysisTone, endpoint, gender, isAdmin, prepared, router]);
 
   const copy = useCallback(async (label: string, value: string) => {
     await navigator.clipboard.writeText(value);
@@ -116,15 +129,23 @@ export function ManualAnalysisClient() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
           <Logo />
-          <span className="w-fit text-xs font-black uppercase tracking-[0.16em] text-text-muted">Admin manual upload</span>
+          <span className="w-fit text-xs font-black uppercase tracking-[0.16em] text-text-muted">
+            {isAdmin ? "Admin image upload" : "Image upload analysis"}
+          </span>
         </header>
 
         <section className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
           <section className="glass-panel rounded-2xl p-5 sm:p-6">
             <div className="mb-6">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-[var(--accent-info)]">Manual exception</p>
-              <h1 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">수동 이미지 분석</h1>
-              <p className="mt-3 text-sm leading-6 text-text-muted">관리자 승인 케이스 전용입니다. 공개 결과는 7일 동안 접근 가능합니다.</p>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[var(--accent-info)]">
+                {isAdmin ? "Manual exception" : "Upload input"}
+              </p>
+              <h1 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">이미지 업로드 분석</h1>
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                {isAdmin
+                  ? "관리자 승인 케이스 전용입니다. 공개 결과는 7일 동안 접근 가능합니다."
+                  : "카메라 대신 사진을 업로드해 AI 얼평보고서를 생성합니다. 공개 결과는 7일 동안 접근 가능합니다."}
+              </p>
             </div>
 
             <div className="space-y-5">
@@ -137,8 +158,8 @@ export function ManualAnalysisClient() {
 
               <FieldBlock label="Analysis tone">
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <ChoiceButton active={analysisTone === "roast"} title="로스팅" description="기존 톤" onClick={() => setAnalysisTone("roast")} />
-                  <ChoiceButton active={analysisTone === "balanced"} title="밸런스" description="욕설 없는 평가" onClick={() => setAnalysisTone("balanced")} />
+                  <ChoiceButton active={analysisTone === "roast"} title="매운 맛 (주의)" description="기존 로스팅 톤" onClick={() => setAnalysisTone("roast")} />
+                  <ChoiceButton active={analysisTone === "balanced"} title="객관적 평가" description="욕설 없는 유머 평가" onClick={() => setAnalysisTone("balanced")} />
                 </div>
               </FieldBlock>
 
@@ -157,14 +178,24 @@ export function ManualAnalysisClient() {
                 </label>
               </FieldBlock>
 
-              <FieldBlock label="Admin note">
-                <textarea
-                  value={adminNote}
-                  onChange={(event) => setAdminNote(event.target.value.slice(0, 500))}
-                  className="min-h-24 w-full resize-y rounded-lg border border-border bg-black/30 px-3 py-3 text-sm text-text-primary outline-none transition placeholder:text-text-faint focus:border-[var(--accent-info)]"
-                  placeholder="운영 메모. 결과 화면에는 노출되지 않습니다."
-                />
-              </FieldBlock>
+              {isAdmin && (
+                <FieldBlock label="Admin note">
+                  <textarea
+                    value={adminNote}
+                    onChange={(event) => setAdminNote(event.target.value.slice(0, 500))}
+                    className="min-h-24 w-full resize-y rounded-lg border border-border bg-black/30 px-3 py-3 text-sm text-text-primary outline-none transition placeholder:text-text-faint focus:border-[var(--accent-info)]"
+                    placeholder="운영 메모. 결과 화면에는 노출되지 않습니다."
+                  />
+                </FieldBlock>
+              )}
+
+              {!isAdmin && (
+                <div className="space-y-3">
+                  <Consent checked={age} onChange={setAge} label="본인은 만 14세 이상이며 본인의 얼굴만 분석합니다" singleLine />
+                  <Consent checked={expires} onChange={setExpires} label="분석된 얼굴과 데이터는 7일 뒤 삭제되어 더 이상 열람할 수 없습니다" />
+                  <Consent checked={lawsuit} onChange={setLawsuit} label="어떤 내용이 나오건 상처받지 않고 개발자를 고소하지 않겠습니다" />
+                </div>
+              )}
 
               {faceWarning && (
                 <StatusBox tone={prepared?.detectedFaceCount && prepared.detectedFaceCount > 1 ? "warn" : "ok"}>{faceWarning}</StatusBox>
@@ -178,8 +209,22 @@ export function ManualAnalysisClient() {
                 icon={submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 onClick={submit}
               >
-                {submitting ? "분석 대기열 등록 중" : "수동 분석 생성"}
+                {submitting ? "분석 대기열 등록 중" : "이미지 분석 생성"}
               </Button>
+
+              {!isAdmin && (
+                <p className="text-center text-xs leading-5 text-text-faint">
+                  분석 생성 시{" "}
+                  <Link className="text-text-muted underline underline-offset-4" href="/terms" target="_blank">
+                    이용약관
+                  </Link>
+                  과{" "}
+                  <Link className="text-text-muted underline underline-offset-4" href="/privacy" target="_blank">
+                    개인정보처리방침
+                  </Link>
+                  에 동의한 것으로 간주됩니다.
+                </p>
+              )}
             </div>
           </section>
 
@@ -206,10 +251,14 @@ export function ManualAnalysisClient() {
                   <CheckCircle2 className="h-5 w-5" />
                   <h2 className="text-lg font-black text-text-primary">분석 요청 생성 완료</h2>
                 </div>
-                <div className="space-y-3 text-sm">
-                  <LinkRow label="공개 결과" href={created.publicResultUrl} copied={copied === "public"} onCopy={() => copy("public", created.publicResultUrl)} />
-                  <LinkRow label="관리자 결과" href={created.adminResultUrl} copied={copied === "admin"} onCopy={() => copy("admin", created.adminResultUrl)} />
-                </div>
+                {isAdmin ? (
+                  <div className="space-y-3 text-sm">
+                    <LinkRow label="공개 결과" href={created.publicResultUrl} copied={copied === "public"} onCopy={() => copy("public", created.publicResultUrl)} />
+                    {created.adminResultUrl && <LinkRow label="관리자 결과" href={created.adminResultUrl} copied={copied === "admin"} onCopy={() => copy("admin", created.adminResultUrl!)} />}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-6 text-text-muted">결과 페이지로 이동 중입니다.</p>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -241,6 +290,15 @@ function FieldBlock({ label, children }: { label: string; children: ReactNode })
       </div>
       {children}
     </div>
+  );
+}
+
+function Consent({ checked, onChange, label, singleLine = false }: { checked: boolean; onChange: (checked: boolean) => void; label: string; singleLine?: boolean }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-bg-card/70 p-4 text-sm text-text-muted transition hover:border-border-bright">
+      <input className="mt-1 h-4 w-4 accent-[var(--accent-info)]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className={`font-medium leading-6 ${singleLine ? "whitespace-nowrap" : ""}`}>{label}</span>
+    </label>
   );
 }
 

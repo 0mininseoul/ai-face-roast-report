@@ -121,6 +121,7 @@ export interface ClientLivenessSignal {
 
 export interface AnalyzeRequestBody {
   gender: Gender;
+  analysisTone?: AnalysisTone;
   metrics: FaceMetrics;
   landmarks?: Landmark[];
   imageBase64: string;

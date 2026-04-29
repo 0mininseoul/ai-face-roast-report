@@ -21,6 +21,7 @@ export function middleware(req: NextRequest) {
 
   const allow =
     path.startsWith("/mobile-only") ||
+    path.startsWith("/manual-analysis") ||
     path.startsWith("/terms") ||
     path.startsWith("/privacy") ||
     path.startsWith("/result") ||

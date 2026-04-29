@@ -7,7 +7,7 @@ import { checkDailyQuota, recordQuotaUsage } from "@/lib/analysis/quota";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
-import type { AnalyzeRequestBody, AnalyzeStartResponse } from "@/types/analysis";
+import type { AnalysisTone, AnalyzeRequestBody, AnalyzeStartResponse } from "@/types/analysis";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -46,6 +46,19 @@ export async function POST(req: NextRequest) {
     return new Response("Missing required fields", { status: 400 });
   }
 
+  const analysisTone = body.analysisTone === undefined ? "roast" : parseAnalysisTone(body.analysisTone);
+  if (!analysisTone) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_invalid_tone",
+      phase: "server_request",
+      level: "warn",
+      payload: { analysisTone: body.analysisTone },
+    });
+    return Response.json({ error: "invalid_analysis_tone" }, { status: 400 });
+  }
+
   const deviceId = sanitizeDeviceId(body.deviceId);
   const liveness = body.liveness ?? null;
   const livenessVariance = typeof liveness?.variance === "number" && Number.isFinite(liveness.variance) ? liveness.variance : null;
@@ -57,6 +70,7 @@ export async function POST(req: NextRequest) {
     phase: "server_request",
     payload: {
       gender: body.gender,
+      analysisTone,
       captureBytesApprox: Math.round(stripDataUrl(body.imageBase64).length * 0.75),
       deviceId,
       livenessVariance,
@@ -100,6 +114,7 @@ export async function POST(req: NextRequest) {
     .from("face_reports")
     .insert({
       gender: body.gender,
+      analysis_tone: analysisTone,
       status: "queued",
       metrics_json: body.metrics,
       landmarks_json: body.landmarks ?? null,
@@ -129,7 +144,7 @@ export async function POST(req: NextRequest) {
     reportId,
     eventName: "analysis_report_created",
     phase: "server_storage",
-    payload: { gender: body.gender },
+    payload: { gender: body.gender, analysisTone },
   });
 
   const cleanBase64 = stripDataUrl(body.imageBase64);
@@ -204,6 +219,10 @@ export async function POST(req: NextRequest) {
 
 function stripDataUrl(input: string): string {
   return input.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
+}
+
+function parseAnalysisTone(value: unknown): AnalysisTone | null {
+  return value === "roast" || value === "balanced" ? value : null;
 }
 
 function sanitizeDeviceId(value: unknown): string | null {

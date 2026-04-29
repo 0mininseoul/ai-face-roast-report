@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Camera } from "lucide-react";
+import { Camera, ImageUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { useCamera } from "@/hooks/useCamera";
 import { playSfx } from "@/lib/sound/sfx";
-import type { Gender } from "@/types/analysis";
+import type { AnalysisTone, Gender } from "@/types/analysis";
 
 export default function EntryPage() {
   const router = useRouter();
   const { videoRef, status, error, start, stop } = useCamera();
   const [gender, setGender] = useState<Gender | null>(null);
+  const [analysisTone, setAnalysisTone] = useState<AnalysisTone>("roast");
   const [age, setAge] = useState(false);
   const [expires, setExpires] = useState(false);
   const [lawsuit, setLawsuit] = useState(false);
@@ -33,7 +34,20 @@ export default function EntryPage() {
       <header className="fixed inset-x-0 top-0 z-30 border-b border-white/10 bg-[linear-gradient(180deg,rgb(6_7_11_/_0.94),rgb(10_12_17_/_0.86))] px-8 py-4 shadow-[0_18px_60px_rgb(0_0_0_/_0.46)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-[92rem] items-center justify-between">
           <Logo />
-          <div className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted drop-shadow-[0_1px_8px_rgb(0_0_0_/_0.85)]">Desktop webcam only</div>
+          <div className="flex items-center gap-3">
+            <div className="hidden text-xs font-bold uppercase tracking-[0.18em] text-text-muted drop-shadow-[0_1px_8px_rgb(0_0_0_/_0.85)] sm:block">
+              Desktop webcam only
+            </div>
+            <Link
+              href="/manual-analysis"
+              aria-label="이미지 업로드 분석"
+              title="이미지 업로드 분석"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-bg-card/70 px-3 text-sm font-semibold text-text-primary transition hover:border-border-bright hover:bg-bg-card-hover"
+            >
+              <ImageUp className="h-4 w-4" />
+              <span className="hidden md:inline">이미지 업로드</span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -72,6 +86,11 @@ export default function EntryPage() {
             ))}
           </div>
 
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <ToneButton active={analysisTone === "roast"} title="매운 맛 (주의)" description="기존 로스팅 톤" onClick={() => setAnalysisTone("roast")} />
+            <ToneButton active={analysisTone === "balanced"} title="객관적 평가" description="욕설 없는 유머 평가" onClick={() => setAnalysisTone("balanced")} />
+          </div>
+
           <div className="mt-6 space-y-3">
             <Consent checked={age} onChange={setAge} label="본인은 만 14세 이상이며 본인의 얼굴만 분석합니다" singleLine />
             <Consent checked={expires} onChange={setExpires} label="분석된 얼굴과 데이터는 24시간 뒤 삭제되어 더 이상 열람할 수 없습니다" />
@@ -85,7 +104,7 @@ export default function EntryPage() {
               if (!gender) return;
               playSfx("boot");
               stop();
-              router.push(`/analyze?gender=${gender}`);
+              router.push(`/analyze?gender=${gender}&tone=${analysisTone}`);
             }}
           >
             분석 시작
@@ -118,6 +137,24 @@ export default function EntryPage() {
         </div>
       )}
     </main>
+  );
+}
+
+function ToneButton({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "min-h-16 rounded-lg border px-3 py-3 text-left transition",
+        active
+          ? "border-accent-info bg-accent-info/12 text-text-primary shadow-[0_0_0_1px_rgb(125_216_255_/_.2)]"
+          : "border-border bg-bg-card text-text-muted hover:border-border-bright hover:bg-bg-card-hover",
+      ].join(" ")}
+    >
+      <span className="block text-sm font-black">{title}</span>
+      <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>
+    </button>
   );
 }
 

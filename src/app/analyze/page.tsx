@@ -28,7 +28,7 @@ import { getClientDeviceId, getClientSessionId, logClientEvent } from "@/lib/tel
 import { useAnalysisStream } from "@/hooks/useAnalysisStream";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceLandmarker } from "@/hooks/useFaceLandmarker";
-import type { Gender, Landmark, ReportSections } from "@/types/analysis";
+import type { AnalysisTone, Gender, Landmark, ReportSections } from "@/types/analysis";
 
 const LOADING_CARD_REVEAL_INTERVAL_MS = 1450;
 const RESULT_CARD_REVEAL_INTERVAL_MS = 2600;
@@ -65,6 +65,8 @@ function AnalyzeClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const gender = searchParams.get("gender") as Gender | null;
+  const toneParam = searchParams.get("tone");
+  const analysisTone: AnalysisTone = toneParam === "balanced" ? "balanced" : "roast";
   const rootRef = useRef<HTMLDivElement | null>(null);
   const startedRef = useRef(false);
   const faceVisibleRef = useRef(false);
@@ -154,13 +156,15 @@ function AnalyzeClient() {
   );
 
   useEffect(() => {
-    if (gender !== "male" && gender !== "female") router.replace("/");
-  }, [gender, router]);
+    const invalidGender = gender !== "male" && gender !== "female";
+    const invalidTone = toneParam !== null && toneParam !== "roast" && toneParam !== "balanced";
+    if (invalidGender || invalidTone) router.replace("/");
+  }, [gender, router, toneParam]);
 
   useEffect(() => {
     if (!gender) return;
-    logEvent("analyze_page_opened", { gender });
-  }, [gender, logEvent]);
+    logEvent("analyze_page_opened", { gender, analysisTone });
+  }, [analysisTone, gender, logEvent]);
 
   useEffect(() => {
     void start();
@@ -248,6 +252,7 @@ function AnalyzeClient() {
         });
         void startAnalysis({
           gender,
+          analysisTone,
           metrics,
           landmarks: averaged,
           imageBase64,
@@ -267,7 +272,7 @@ function AnalyzeClient() {
 
       return true;
     },
-    [gender, logEvent, startAnalysis, status, videoRef],
+    [analysisTone, gender, logEvent, startAnalysis, status, videoRef],
   );
 
   useEffect(() => {

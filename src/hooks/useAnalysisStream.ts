@@ -53,7 +53,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
     };
 
     setState({ ...initial, isStreaming: true, statusMessage: "정밀 분석 요청을 전송하고 있습니다." });
-    onEvent?.("analysis_fetch_started", { phase: "client_fetch", gender: body.gender });
+    onEvent?.("analysis_fetch_started", { phase: "client_fetch", gender: body.gender, analysisTone: body.analysisTone ?? "roast" });
 
     let response: Response;
     try {

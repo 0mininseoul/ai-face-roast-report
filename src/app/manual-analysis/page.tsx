@@ -4,17 +4,13 @@ import { ManualAnalysisClient } from "@/components/manual-analysis/ManualAnalysi
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const runtime = "nodejs";
 
 export const metadata: Metadata = {
   title: "이미지 업로드 분석 - AI 얼평보고서",
-  robots: {
-    index: false,
-    follow: false,
-  },
+  description: "사진을 업로드해 AI 얼평보고서를 생성합니다.",
 };
 
-export default function ManualAnalysisPage() {
+export default function PublicManualAnalysisPage() {
   noStore();
-  return <ManualAnalysisClient mode="admin" />;
+  return <ManualAnalysisClient />;
 }
