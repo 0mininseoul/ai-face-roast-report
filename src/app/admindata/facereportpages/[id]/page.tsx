@@ -9,6 +9,7 @@ import { MainCopy } from "@/components/result/MainCopy";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { backfillStoredReportSections } from "@/lib/analysis/reportBackfill";
+import { wakeAnalysisJobIfReady } from "@/lib/analysis/jobWake";
 import { analysisStatusMessage, isPendingAnalysisStatus } from "@/lib/analysis/jobRunner";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -35,7 +36,10 @@ export default async function AdminFaceReportPage({ params }: { params: { id: st
   if (error || !data) notFound();
 
   const row = data as FaceReportRow;
-  if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) return <AdminStatusPage row={row} />;
+  if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) {
+    wakeAnalysisJobIfReady({ row, eventName: "analysis_admin_result_wake_failed", phase: "admin_result" });
+    return <AdminStatusPage row={row} />;
+  }
 
   const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), {
     gender: row.gender,

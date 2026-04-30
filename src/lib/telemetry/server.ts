@@ -22,9 +22,11 @@ const OPERATIONAL_WARNING_EVENTS = new Set([
 
 const OPERATIONAL_ERROR_EVENTS = new Set([
   "analysis_report_create_failed",
+  "analysis_admin_result_wake_failed",
   "analysis_image_upload_failed",
   "analysis_report_update_failed",
   "analysis_background_start_failed",
+  "analysis_result_wake_failed",
   "analysis_status_wake_failed",
   "analysis_drain_failed",
   "analysis_job_failed_unhandled",

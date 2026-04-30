@@ -9,6 +9,7 @@ import { ResultHeader } from "@/components/result/ResultHeader";
 import { StopCameraOnMount } from "@/components/result/StopCameraOnMount";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { wakeAnalysisJobIfReady } from "@/lib/analysis/jobWake";
 import { backfillStoredReportSections } from "@/lib/analysis/reportBackfill";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { getDictionary } from "@/lib/i18n/dictionary";
@@ -95,7 +96,10 @@ export async function ResultPageContent({ id, requestedLocale }: { id: string; r
   if (!requestedLocale || requestedLocale !== locale) redirect(localizedResultPath(row.id, locale));
   const expiresAt = new Date(row.expires_at).getTime();
   if (expiresAt <= Date.now()) notFound();
-  if (isPendingResultStatus(row.status)) return <PendingResultPage status={row.status} retryAfter={row.retry_after ?? null} locale={locale} />;
+  if (isPendingResultStatus(row.status)) {
+    wakeAnalysisJobIfReady({ row, eventName: "analysis_result_wake_failed", phase: "server_result" });
+    return <PendingResultPage status={row.status} retryAfter={row.retry_after ?? null} locale={locale} />;
+  }
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) notFound();
 
   const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), {
