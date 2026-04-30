@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, ImageUp, Loader2, RefreshCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Flame, ImageUp, Loader2, Mars, RefreshCcw, Scale, Venus } from "lucide-react";
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
@@ -169,15 +169,15 @@ export function ManualAnalysisClient({ mode = "public", locale = DEFAULT_LOCALE 
 
               <FieldBlock label={dictionary.manual.gender}>
                 <div className="grid grid-cols-2 gap-2">
-                  <ChoiceButton active={gender === "male"} title={dictionary.entry.genderMale} onClick={() => setGender("male")} />
-                  <ChoiceButton active={gender === "female"} title={dictionary.entry.genderFemale} onClick={() => setGender("female")} />
+                  <ChoiceButton active={gender === "male"} icon={<Mars className="h-5 w-5" />} title={dictionary.entry.genderMale} onClick={() => setGender("male")} />
+                  <ChoiceButton active={gender === "female"} icon={<Venus className="h-5 w-5" />} title={dictionary.entry.genderFemale} onClick={() => setGender("female")} />
                 </div>
               </FieldBlock>
 
               <FieldBlock label={dictionary.manual.tone}>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <ChoiceButton active={analysisTone === "roast"} title={dictionary.entry.roastTitle} description={dictionary.entry.roastDescription} onClick={() => setAnalysisTone("roast")} />
-                  <ChoiceButton active={analysisTone === "balanced"} title={dictionary.entry.balancedTitle} description={dictionary.entry.balancedDescription} onClick={() => setAnalysisTone("balanced")} />
+                  <ChoiceButton active={analysisTone === "roast"} icon={<Flame className="h-5 w-5" />} title={dictionary.entry.roastTitle} description={dictionary.entry.roastDescription} onClick={() => setAnalysisTone("roast")} />
+                  <ChoiceButton active={analysisTone === "balanced"} icon={<Scale className="h-5 w-5" />} title={dictionary.entry.balancedTitle} description={dictionary.entry.balancedDescription} onClick={() => setAnalysisTone("balanced")} />
                 </div>
               </FieldBlock>
 
@@ -336,11 +336,13 @@ function StatusBox({ tone, children }: { tone: "ok" | "warn" | "error"; children
 
 function ChoiceButton({
   active,
+  icon,
   title,
   description,
   onClick,
 }: {
   active: boolean;
+  icon?: ReactNode;
   title: string;
   description?: string;
   onClick: () => void;
@@ -349,14 +351,15 @@ function ChoiceButton({
     <button
       type="button"
       className={[
-        "rounded-lg border px-3 py-3 text-left transition",
+        "flex min-h-14 flex-col items-center justify-center rounded-lg border px-3 py-3 text-center transition",
         active
           ? "border-[var(--accent-info)] bg-[rgb(125_216_255_/_0.11)] text-text-primary"
           : "border-border bg-bg-card/70 text-text-muted hover:border-border-bright",
       ].join(" ")}
       onClick={onClick}
     >
-      <span className="block text-sm font-black">{title}</span>
+      {icon && <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>}
+      <span className={["block text-sm font-black", icon ? "mt-1" : ""].join(" ")}>{title}</span>
       {description && <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>}
     </button>
   );

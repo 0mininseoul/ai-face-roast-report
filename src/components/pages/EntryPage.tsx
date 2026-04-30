@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Camera, ImageUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Camera, Flame, ImageUp, Mars, Scale, Venus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { Logo } from "@/components/ui/Logo";
@@ -76,24 +76,19 @@ export function EntryPage({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
 
           <div className="grid grid-cols-2 gap-3">
             {(["male", "female"] as const).map((value) => (
-              <button
+              <ChoiceCard
                 key={value}
+                active={gender === value}
+                icon={value === "male" ? <Mars className="h-5 w-5" /> : <Venus className="h-5 w-5" />}
+                title={value === "male" ? dictionary.entry.genderMale : dictionary.entry.genderFemale}
                 onClick={() => setGender(value)}
-                className={[
-                  "h-16 rounded-lg border text-base font-bold transition",
-                  gender === value
-                    ? "border-accent-info bg-accent-info/12 text-text-primary shadow-[0_0_0_1px_rgb(125_216_255_/_.2)]"
-                    : "border-border bg-bg-card text-text-muted hover:border-border-bright hover:bg-bg-card-hover",
-                ].join(" ")}
-              >
-                {value === "male" ? dictionary.entry.genderMale : dictionary.entry.genderFemale}
-              </button>
+              />
             ))}
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <ToneButton active={analysisTone === "roast"} title={dictionary.entry.roastTitle} description={dictionary.entry.roastDescription} onClick={() => setAnalysisTone("roast")} />
-            <ToneButton active={analysisTone === "balanced"} title={dictionary.entry.balancedTitle} description={dictionary.entry.balancedDescription} onClick={() => setAnalysisTone("balanced")} />
+            <ChoiceCard active={analysisTone === "roast"} icon={<Flame className="h-5 w-5" />} title={dictionary.entry.roastTitle} description={dictionary.entry.roastDescription} onClick={() => setAnalysisTone("roast")} />
+            <ChoiceCard active={analysisTone === "balanced"} icon={<Scale className="h-5 w-5" />} title={dictionary.entry.balancedTitle} description={dictionary.entry.balancedDescription} onClick={() => setAnalysisTone("balanced")} />
           </div>
 
           <div className="mt-6 space-y-3">
@@ -145,20 +140,33 @@ export function EntryPage({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
   );
 }
 
-function ToneButton({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick: () => void }) {
+function ChoiceCard({
+  active,
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  title: string;
+  description?: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={[
-        "min-h-16 rounded-lg border px-3 py-3 text-left transition",
+        "flex min-h-16 flex-col items-center justify-center rounded-lg border px-3 py-3 text-center transition",
         active
           ? "border-accent-info bg-accent-info/12 text-text-primary shadow-[0_0_0_1px_rgb(125_216_255_/_.2)]"
           : "border-border bg-bg-card text-text-muted hover:border-border-bright hover:bg-bg-card-hover",
       ].join(" ")}
     >
-      <span className="block text-sm font-black">{title}</span>
-      <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>
+      <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>
+      <span className="mt-1 block text-sm font-black">{title}</span>
+      {description && <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>}
     </button>
   );
 }
