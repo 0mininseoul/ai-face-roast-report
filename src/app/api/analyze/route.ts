@@ -4,6 +4,8 @@ import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
 import { drainAnalysisQueue } from "@/lib/analysis/jobRunner";
 import { MIN_LANDMARK_VARIANCE } from "@/lib/analysis/liveness";
 import { checkDailyQuota, recordQuotaUsage } from "@/lib/analysis/quota";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { LOCALE_HEADER, isLocale, normalizeLocale } from "@/lib/i18n/locales";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
@@ -47,6 +49,7 @@ export async function POST(req: NextRequest) {
   }
 
   const analysisTone = body.analysisTone === undefined ? "roast" : parseAnalysisTone(body.analysisTone);
+  const locale = body.locale === undefined ? normalizeLocale(req.headers.get(LOCALE_HEADER)) : parseLocale(body.locale);
   if (!analysisTone) {
     await logServiceEvent({
       req,
@@ -57,6 +60,17 @@ export async function POST(req: NextRequest) {
       payload: { analysisTone: body.analysisTone },
     });
     return Response.json({ error: "invalid_analysis_tone" }, { status: 400 });
+  }
+  if (!locale) {
+    await logServiceEvent({
+      req,
+      sessionId: body.clientSessionId,
+      eventName: "analysis_invalid_locale",
+      phase: "server_request",
+      level: "warn",
+      payload: { locale: body.locale },
+    });
+    return Response.json({ error: "invalid_locale" }, { status: 400 });
   }
 
   const deviceId = sanitizeDeviceId(body.deviceId);
@@ -71,6 +85,7 @@ export async function POST(req: NextRequest) {
     payload: {
       gender: body.gender,
       analysisTone,
+      locale,
       captureBytesApprox: Math.round(stripDataUrl(body.imageBase64).length * 0.75),
       deviceId,
       livenessVariance,
@@ -115,6 +130,7 @@ export async function POST(req: NextRequest) {
     .insert({
       gender: body.gender,
       analysis_tone: analysisTone,
+      locale,
       status: "queued",
       metrics_json: body.metrics,
       landmarks_json: body.landmarks ?? null,
@@ -144,7 +160,7 @@ export async function POST(req: NextRequest) {
     reportId,
     eventName: "analysis_report_created",
     phase: "server_storage",
-    payload: { gender: body.gender, analysisTone },
+    payload: { gender: body.gender, analysisTone, locale },
   });
 
   const cleanBase64 = stripDataUrl(body.imageBase64);
@@ -212,7 +228,7 @@ export async function POST(req: NextRequest) {
   const response: AnalyzeStartResponse = {
     reportId,
     status: "queued",
-    message: "정밀 분석 대기열에 등록했습니다.",
+    message: getDictionary(locale).status.queued,
   };
   return Response.json(response, { status: 202 });
 }
@@ -223,6 +239,10 @@ function stripDataUrl(input: string): string {
 
 function parseAnalysisTone(value: unknown): AnalysisTone | null {
   return value === "roast" || value === "balanced" ? value : null;
+}
+
+function parseLocale(value: unknown) {
+  return isLocale(value) ? value : null;
 }
 
 function sanitizeDeviceId(value: unknown): string | null {

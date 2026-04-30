@@ -1,4 +1,5 @@
 import type { AnalysisSource, AnalysisTone } from "@/types/analysis";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 
 const MANUAL_UPLOAD_SYSTEM_APPENDIX = [
   "## 관리자 승인 수동 업로드 예외",
@@ -26,8 +27,41 @@ const BALANCED_TONE_SYSTEM_APPENDIX = [
   "`mainCopy`도 한 줄 객관 평가 카피로 작성하세요. 욕설 없이, 촬영 조건이나 카메라 개선 조언이 아니라 그 인물 자체에 대한 호감도·분위기·첫인상 평가여야 합니다.",
 ].join("\n");
 
-export function buildAnalysisSystemInstruction(base: string, analysisSource: AnalysisSource, analysisTone: AnalysisTone = "roast"): string {
+const LOCALE_APPENDIX: Record<Locale, string> = {
+  ko: [
+    "## 출력 언어",
+    "",
+    "모든 사용자 노출 텍스트 필드(`meta.compliance_text`, `geometry`, `parts`, `scores.comments`, `impression.keywords`, `impression.physiognomy`, `conclusion`, `mainCopy`)는 한국어로 작성합니다.",
+    "JSON key 이름과 enum 값은 스키마 그대로 유지합니다.",
+  ].join("\n"),
+  en: [
+    "## Output language",
+    "",
+    "Write every user-facing text field (`meta.compliance_text`, `geometry`, `parts`, `scores.comments`, `impression.keywords`, `impression.physiognomy`, `conclusion`, `mainCopy`) in natural English.",
+    "Keep JSON key names and enum values exactly as defined by the schema.",
+    "Do not use Korean slang, Korean laughter text, or Korean age-range wording.",
+    "For roast mode, use sharp English roast humor about visible facial structure and presentation only. Avoid protected-class insults, medical diagnosis, self-harm content, sexual-experience claims, and claims about race, ethnicity, nationality, disability, religion, gender identity, or sexual orientation.",
+    "For users who appear 35 or older, keep the tone polished and satirical rather than profane. Do not use profanity or meme-heavy phrasing.",
+  ].join("\n"),
+  ja: [
+    "## 出力言語",
+    "",
+    "ユーザーに表示されるすべてのテキストフィールド（`meta.compliance_text`, `geometry`, `parts`, `scores.comments`, `impression.keywords`, `impression.physiognomy`, `conclusion`, `mainCopy`）は自然な日本語で書いてください。",
+    "JSONのキー名とenum値はスキーマ通りに維持してください。",
+    "韓国語スラング、韓国語の笑い表現、韓国語の年齢帯表現は使わないでください。",
+    "辛口モードでは、見た目の構造・表情・写り方に限定した日本語の風刺として鋭く書いてください。保護属性への侮辱、医療診断、自傷関連、性的経験の推測、人種・民族・国籍・障害・宗教・性自認・性的指向への言及は禁止です。",
+    "35歳以上に見える場合は、乱暴な罵倒ではなく丁寧で皮肉の効いた文体にしてください。",
+  ].join("\n"),
+};
+
+export function buildAnalysisSystemInstruction(
+  base: string,
+  analysisSource: AnalysisSource,
+  analysisTone: AnalysisTone = "roast",
+  locale: Locale = DEFAULT_LOCALE,
+): string {
   const appendices: string[] = [];
+  appendices.push(LOCALE_APPENDIX[locale] ?? LOCALE_APPENDIX.ko);
   if (analysisSource === "manual_upload") appendices.push(MANUAL_UPLOAD_SYSTEM_APPENDIX);
   if (analysisTone === "balanced") appendices.push(BALANCED_TONE_SYSTEM_APPENDIX);
   return appendices.length > 0 ? `${base}\n\n${appendices.join("\n\n")}` : base;

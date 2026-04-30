@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import presets from "../content/main-copy-presets.json";
+import enPresets from "../content/main-copy-presets.en.json";
+import jaPresets from "../content/main-copy-presets.ja.json";
 import balancedPresets from "../content/balanced-main-copy-presets.json";
+import balancedEnPresets from "../content/balanced-main-copy-presets.en.json";
 import { pickBalancedMainCopy, pickMainCopy } from "@/lib/copy/mainCopy";
 
 describe("pickMainCopy", () => {
@@ -58,5 +61,36 @@ describe("pickMainCopy", () => {
       expect(copy).not.toMatch(/[ㅅㅆ]\s*ㅂ|[씨시]\s*발|좆|존\s*나|병\s*신|와꾸|ㅋ{2,}/);
       expect(copy).not.toMatch(/조명|카메라|앵글|각도|거리|촬영/);
     }
+  });
+
+  it("draws English and Japanese copy from locale-specific preset files", () => {
+    const enPool = new Set<string>([
+      ...enPresets.under_35.neutral,
+      ...enPresets.under_35.male,
+      ...enPresets.under_35.female,
+      ...enPresets.over_35.neutral,
+      ...enPresets.over_35.male,
+      ...enPresets.over_35.female,
+    ]);
+    const jaPool = new Set<string>([
+      ...jaPresets.under_35.neutral,
+      ...jaPresets.under_35.male,
+      ...jaPresets.under_35.female,
+      ...jaPresets.over_35.neutral,
+      ...jaPresets.over_35.male,
+      ...jaPresets.over_35.female,
+    ]);
+    const balancedEnPool = new Set<string>([
+      ...balancedEnPresets.under_35.neutral,
+      ...balancedEnPresets.under_35.male,
+      ...balancedEnPresets.under_35.female,
+      ...balancedEnPresets.over_35.neutral,
+      ...balancedEnPresets.over_35.male,
+      ...balancedEnPresets.over_35.female,
+    ]);
+
+    expect(enPool.has(pickMainCopy("male", "under_35", "en-seed", "en"))).toBe(true);
+    expect(jaPool.has(pickMainCopy("female", "over_35", "ja-seed", "ja"))).toBe(true);
+    expect(balancedEnPool.has(pickBalancedMainCopy("female", "under_35", "balanced-en", "en"))).toBe(true);
   });
 });

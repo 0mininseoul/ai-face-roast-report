@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { KakaoIcon } from "@/components/ui/KakaoIcon";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import { loadKakaoSdk, shareKakaoFeed } from "@/lib/kakao/share";
 import { OG_IMAGE_PATH } from "@/lib/siteMetadata";
 
 const DEFAULT_URL = "https://faceroast.vercel.app";
 
-export function PcUrlCopy() {
+export function PcUrlCopy({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
+  const dictionary = getDictionary(locale);
   const [pcUrl, setPcUrl] = useState(DEFAULT_URL);
   const [kakaoReady, setKakaoReady] = useState(false);
 
@@ -19,10 +22,11 @@ export function PcUrlCopy() {
 
   const shareKakao = () => {
     shareKakaoFeed({
-      title: "AI 얼평보고서",
-      description: "AI가 분석하는 내 얼굴 점수 - PC 웹캠으로 바로 시작",
+      title: dictionary.brand.title,
+      description: dictionary.mobile.shareDescription,
       imageUrl: `${pcUrl}${OG_IMAGE_PATH}`,
-      resultUrl: pcUrl,
+      resultUrl: `${pcUrl}/${locale}`,
+      buttonTitle: dictionary.result.shareCta,
     });
   };
 
@@ -37,12 +41,12 @@ export function PcUrlCopy() {
           variant="ghost"
           className="h-9 shrink-0 px-3 text-xs"
           disabled={!kakaoReady}
-          aria-label="카카오톡으로 보내기"
-          title={kakaoReady ? "카카오톡으로 보내기" : "카카오톡 공유 사용 불가"}
+          aria-label={dictionary.mobile.sendKakao}
+          title={kakaoReady ? dictionary.mobile.sendKakao : dictionary.result.kakaoUnavailable}
           icon={<KakaoIcon className="h-4 w-4 rounded-[4px]" />}
           onClick={shareKakao}
         >
-          보내기
+          {dictionary.mobile.send}
         </Button>
       </div>
     </div>

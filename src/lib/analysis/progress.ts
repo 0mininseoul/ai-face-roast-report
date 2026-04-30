@@ -1,4 +1,6 @@
 import { TARGET_SAMPLE_COUNT } from "@/lib/analysis/sampling";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import type { FaceReportStatus } from "@/types/analysis";
 
 interface AnalysisProgressInput {
@@ -19,43 +21,44 @@ export interface AnalysisProgress {
 }
 
 const ESTIMATED_REPORT_CHARS = 5200;
-export function getAnalysisProgress(input: AnalysisProgressInput): AnalysisProgress {
+export function getAnalysisProgress(input: AnalysisProgressInput, locale: Locale = DEFAULT_LOCALE): AnalysisProgress {
+  const labels = getDictionary(locale).progress;
   if (input.cameraStatus !== "ready") {
-    return { percent: 8, label: "카메라 초기화" };
+    return { percent: 8, label: labels.cameraInit };
   }
 
   if (input.isModelLoading) {
-    return { percent: 18, label: "얼굴 인식 모델 로딩" };
+    return { percent: 18, label: labels.modelLoading };
   }
 
   if (!input.hasStarted) {
     const sampleRatio = clamp(input.sampleCount / TARGET_SAMPLE_COUNT, 0, 1);
-    return { percent: Math.round(22 + sampleRatio * 28), label: "얼굴 안정 프레임 수집" };
+    return { percent: Math.round(22 + sampleRatio * 28), label: labels.collecting };
   }
 
   if (!input.hasReportId) {
-    return { percent: 54, label: "분석 요청 전송" };
+    return { percent: 54, label: labels.sending };
   }
 
   if (!input.isComplete) {
     if (input.jobStatus === "queued") {
-      return { percent: 60, label: "정밀 분석 대기" };
+      return { percent: 60, label: labels.queued };
     }
 
     if (input.jobStatus === "retrying") {
-      return { percent: 66, label: "Pro 분석 재시도 대기" };
+      return { percent: 66, label: labels.retrying };
     }
 
     if (input.jobStatus === "processing" || input.jobStatus === "analyzing") {
       const pollProgress = clamp((input.pollCount ?? 0) / 12, 0, 1);
-      return { percent: Math.round(68 + pollProgress * 24), label: "AI 정밀 분석 진행" };
+      return { percent: Math.round(68 + pollProgress * 24), label: labels.processing };
     }
 
     const streamRatio = clamp(input.rawChars / ESTIMATED_REPORT_CHARS, 0, 1);
-    return { percent: Math.round(58 + streamRatio * 34), label: "AI 분석 응답 수신" };
+    return { percent: Math.round(58 + streamRatio * 34), label: labels.receiving };
   }
 
-  return { percent: 100, label: "최종 결론 확인" };
+  return { percent: 100, label: labels.receiving };
 }
 
 export function formatProgress(progress: AnalysisProgress): string {

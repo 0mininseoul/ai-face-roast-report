@@ -64,15 +64,25 @@ describe("POST /api/analyze liveness gate", () => {
     expect(body.error).toBe("invalid_analysis_tone");
     expect(checkDailyQuotaMock).not.toHaveBeenCalled();
   });
+
+  it("rejects unknown locale values", async () => {
+    const response = await POST(analyzeRequest({ locale: "fr", liveness: { variance: MIN_LANDMARK_VARIANCE * 2 } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("invalid_locale");
+    expect(checkDailyQuotaMock).not.toHaveBeenCalled();
+  });
 });
 
-function analyzeRequest({ analysisTone, liveness }: { analysisTone?: string; liveness?: { variance: number } }) {
+function analyzeRequest({ analysisTone, locale, liveness }: { analysisTone?: string; locale?: string; liveness?: { variance: number } }) {
   return new NextRequest("https://example.com/api/analyze", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       gender: "male",
       analysisTone,
+      locale,
       metrics: { asymmetryIndex: 0.1 },
       imageBase64: "data:image/jpeg;base64,AAAA",
       clientSessionId: "session-1",

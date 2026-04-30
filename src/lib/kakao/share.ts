@@ -29,7 +29,7 @@ export function loadKakaoSdk(): Promise<boolean> {
   });
 }
 
-export function shareKakaoFeed(params: { title: string; description: string; imageUrl: string; resultUrl: string }) {
+export function shareKakaoFeed(params: { title: string; description: string; imageUrl: string; resultUrl: string; buttonTitle?: string }) {
   window.Kakao?.Share?.sendDefault({
     objectType: "feed",
     content: {
@@ -43,7 +43,7 @@ export function shareKakaoFeed(params: { title: string; description: string; ima
     },
     buttons: [
       {
-        title: "분석 보러가기",
+        title: params.buttonTitle ?? "분석 보러가기",
         link: {
           mobileWebUrl: params.resultUrl,
           webUrl: params.resultUrl,

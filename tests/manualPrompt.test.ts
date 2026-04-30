@@ -2,8 +2,17 @@ import { describe, expect, it } from "vitest";
 import { buildAnalysisSystemInstruction } from "@/lib/gemini/manualPrompt";
 
 describe("buildAnalysisSystemInstruction", () => {
-  it("keeps the base prompt unchanged for normal roast webcam reports", () => {
-    expect(buildAnalysisSystemInstruction("base", "live_webcam", "roast")).toBe("base");
+  it("adds locale output instructions for normal roast webcam reports", () => {
+    const prompt = buildAnalysisSystemInstruction("base", "live_webcam", "roast");
+
+    expect(prompt).toContain("base");
+    expect(prompt).toContain("출력 언어");
+    expect(prompt).toContain("JSON key 이름과 enum 값은 스키마 그대로 유지합니다");
+  });
+
+  it("adds target-language instructions for English and Japanese reports", () => {
+    expect(buildAnalysisSystemInstruction("base", "live_webcam", "roast", "en")).toContain("Write every user-facing text field");
+    expect(buildAnalysisSystemInstruction("base", "live_webcam", "roast", "ja")).toContain("自然な日本語");
   });
 
   it("adds manual upload and balanced tone instructions when requested", () => {

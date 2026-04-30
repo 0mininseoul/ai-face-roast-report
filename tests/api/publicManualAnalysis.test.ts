@@ -95,7 +95,7 @@ describe("POST /api/manual-analysis", () => {
     expect(body).toMatchObject({
       reportId: REPORT_ID,
       status: "queued",
-      publicResultUrl: `https://example.com/result/${REPORT_ID}`,
+      publicResultUrl: `https://example.com/ko/result/${REPORT_ID}`,
     });
     expect(body.adminResultUrl).toBeUndefined();
 
@@ -105,6 +105,7 @@ describe("POST /api/manual-analysis", () => {
       status: "queued",
       analysis_source: "manual_upload",
       analysis_tone: "balanced",
+      locale: "ko",
       admin_note: null,
       manual_detected_face_count: 1,
       ip_hash: "hashed-ip",
@@ -128,6 +129,15 @@ describe("POST /api/manual-analysis", () => {
     expect(body.error).toBe("daily_limit_reached");
     expect(mocks.supabaseFrom).not.toHaveBeenCalled();
     expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("stores a requested locale and returns a locale-prefixed result URL", async () => {
+    const response = await POST(manualRequest({ ...validBody(), locale: "ja" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(202);
+    expect(body.publicResultUrl).toBe(`https://example.com/ja/result/${REPORT_ID}`);
+    expect(mocks.insert.mock.calls[0]?.[0]).toMatchObject({ locale: "ja" });
   });
 });
 

@@ -11,6 +11,8 @@ import { analysisErrorMessage, extractErrorText, isRetryableAnalysisError } from
 import { applyBalancedAgePolicy } from "@/lib/analysis/agePolicy";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
 import { shouldRejectImageSourceForAnalysis } from "@/lib/analysis/sourcePolicy";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, normalizeLocale, type Locale } from "@/lib/i18n/locales";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
 import type { AnalysisJobStatus, FaceReportRow, FaceReportStatus, ReportSections } from "@/types/analysis";
@@ -164,18 +166,22 @@ export function shouldWakeAnalysisJob(row: FaceReportRow): boolean {
   return Boolean(row.locked_until && new Date(row.locked_until).getTime() <= Date.now());
 }
 
-export function analysisStatusMessage(row: Pick<FaceReportRow, "status" | "retry_after" | "model_used" | "last_error">): string {
-  if (row.status === "complete") return "보고서 생성이 완료되었습니다.";
-  if (row.status === "failed") return analysisErrorMessage(row.last_error ?? "analysis_failed");
-  if (row.status === "queued") return "정밀 분석 대기열에서 순서를 기다리고 있습니다.";
+export function analysisStatusMessage(
+  row: Pick<FaceReportRow, "status" | "retry_after" | "model_used" | "last_error">,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  const messages = getDictionary(locale).status;
+  if (row.status === "complete") return messages.complete;
+  if (row.status === "failed") return analysisErrorMessage(row.last_error ?? "analysis_failed", locale);
+  if (row.status === "queued") return messages.queued;
   if (row.status === "retrying") {
     const retryAt = row.retry_after ? new Date(row.retry_after).getTime() : 0;
-    if (retryAt > Date.now()) return "Pro 모델 응답이 지연되어 잠시 후 다시 시도합니다.";
-    return "정밀 분석 재시도를 준비하고 있습니다.";
+    if (retryAt > Date.now()) return messages.retryDelayed;
+    return messages.retryPreparing;
   }
-  if (row.model_used === MODEL_ANALYSIS) return "Gemini Pro 정밀 분석을 진행 중입니다.";
-  if (row.model_used) return "보조 분석 모델로 보고서 생성을 마무리하고 있습니다.";
-  return "정밀 분석을 진행 중입니다.";
+  if (row.model_used === MODEL_ANALYSIS) return messages.proProcessing;
+  if (row.model_used) return messages.fallbackProcessing;
+  return messages.processing;
 }
 
 async function claimAnalysisJob(reportId: string | null): Promise<FaceReportRow | null> {
@@ -199,7 +205,8 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
   const imageBase64 = await downloadFaceImage(row.face_image_path);
   const analysisSource = row.analysis_source ?? "live_webcam";
   const analysisTone = row.analysis_tone ?? "roast";
-  const systemInstruction = buildAnalysisSystemInstruction(await readAnalyzeSystemPrompt(), analysisSource, analysisTone);
+  const locale = normalizeLocale(row.locale);
+  const systemInstruction = buildAnalysisSystemInstruction(await readAnalyzeSystemPrompt(), analysisSource, analysisTone, locale);
   const startedAt = Date.now();
   const jobBudgetMs = context.jobBudgetMs && context.jobBudgetMs > 0 ? context.jobBudgetMs : intEnv("ANALYSIS_JOB_BUDGET_MS", DEFAULT_JOB_BUDGET_MS);
   const modelChain = buildAnalysisModelChain({
@@ -253,6 +260,7 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
           analysisSource,
           analysisTone,
           manualDetectedFaceCount: row.manual_detected_face_count,
+          locale,
         }),
         imageBase64,
         timeoutMs,
@@ -284,14 +292,14 @@ async function runClaimedAnalysisJob(row: FaceReportRow, context: AnalysisJobCon
       const parsedForTone = analysisTone === "balanced" ? applyBalancedAgePolicy(parsed) : parsed;
       const mainCopy =
         analysisTone === "balanced"
-          ? pickBalancedMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id)
-          : pickMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id);
+          ? pickBalancedMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id, locale)
+          : pickMainCopy(row.gender, parsedForTone.impression.ageBucket, row.id, locale);
       const sections = postprocessReportSections(
         {
           ...parsedForTone,
           mainCopy,
         },
-        { gender: row.gender, tone: analysisTone },
+        { gender: row.gender, tone: analysisTone, locale },
       );
       await markJobComplete(row, sections, model);
       await logServiceEvent({

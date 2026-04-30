@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
 import { drainAnalysisQueue } from "@/lib/analysis/jobRunner";
 import { validateAdminBasicAuth } from "@/lib/admin/basicAuth";
+import { isLocale, localizedResultPath, normalizeLocale } from "@/lib/i18n/locales";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
 import type { AnalysisTone, FaceMetrics, Gender, Landmark } from "@/types/analysis";
@@ -16,6 +17,7 @@ const MAX_ADMIN_NOTE_CHARS = 500;
 interface ManualAnalysisRequestBody {
   gender?: unknown;
   analysisTone?: unknown;
+  locale?: unknown;
   imageBase64?: unknown;
   metrics?: unknown;
   landmarks?: unknown;
@@ -43,13 +45,14 @@ export async function POST(req: NextRequest) {
 
   const gender = parseGender(body.gender);
   const analysisTone = body.analysisTone === undefined ? "roast" : parseAnalysisTone(body.analysisTone);
+  const locale = body.locale === undefined ? "ko" : parseLocale(body.locale);
   const imageBase64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
   const metrics = isObject(body.metrics) ? (body.metrics as unknown as FaceMetrics) : null;
   const landmarks = parseLandmarks(body.landmarks);
   const manualDetectedFaceCount = parseDetectedFaceCount(body.manualDetectedFaceCount);
   const adminNote = parseAdminNote(body.adminNote);
 
-  if (!gender || !analysisTone || !imageBase64 || !metrics || !landmarks || manualDetectedFaceCount === null) {
+  if (!gender || !analysisTone || !locale || !imageBase64 || !metrics || !landmarks || manualDetectedFaceCount === null) {
     await logServiceEvent({
       req,
       eventName: "manual_analysis_missing_required_fields",
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
       payload: {
         hasGender: Boolean(gender),
         hasAnalysisTone: Boolean(analysisTone),
+        hasLocale: Boolean(locale),
         hasImage: Boolean(imageBase64),
         hasMetrics: Boolean(metrics),
         hasLandmarks: Boolean(landmarks),
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
       attempt_count: 0,
       analysis_source: "manual_upload",
       analysis_tone: analysisTone,
+      locale,
       admin_note: adminNote,
       manual_detected_face_count: manualDetectedFaceCount,
     })
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest) {
     reportId,
     eventName: "manual_analysis_report_created",
     phase: "admin_manual_storage",
-    payload: { gender, analysisTone, bytes: imageBuffer.length, detectedFaceCount: manualDetectedFaceCount },
+    payload: { gender, analysisTone, locale, bytes: imageBuffer.length, detectedFaceCount: manualDetectedFaceCount },
   });
 
   waitUntil(
@@ -168,7 +173,7 @@ export async function POST(req: NextRequest) {
         eventName: "manual_analysis_background_start_failed",
         phase: "admin_manual_worker",
         level: "error",
-        payload: { message: analysisErrorMessage(error), providerMessage: extractErrorText(error) },
+        payload: { message: analysisErrorMessage(error, locale), providerMessage: extractErrorText(error) },
       }),
     ),
   );
@@ -178,7 +183,7 @@ export async function POST(req: NextRequest) {
     {
       reportId,
       status: "queued",
-      publicResultUrl: `${origin}/result/${reportId}`,
+      publicResultUrl: `${origin}${localizedResultPath(reportId, locale)}`,
       adminResultUrl: `${origin}/admindata/facereportpages/${reportId}`,
     },
     { status: 202 },
@@ -191,6 +196,10 @@ function parseGender(value: unknown): Gender | null {
 
 function parseAnalysisTone(value: unknown): AnalysisTone | null {
   return value === "roast" || value === "balanced" ? value : null;
+}
+
+function parseLocale(value: unknown) {
+  return isLocale(value) ? normalizeLocale(value) : null;
 }
 
 function parseAdminNote(value: unknown): string | null {

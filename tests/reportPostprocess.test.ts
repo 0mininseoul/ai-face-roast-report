@@ -284,6 +284,17 @@ describe("postprocessReportSections", () => {
     expect(processed.conclusion).toContain("출석 체크");
     expect(processed.conclusion).not.toMatch(/촬영|조명|카메라|ㅋ{2,}|[씨시]\s*발|좆|와꾸/);
   });
+
+  it("does not inject Korean roast fallback text into non-Korean reports", () => {
+    const processed = postprocessReportSections(makeSections({ conclusion: "The face has several rough edges." }), {
+      gender: "male",
+      locale: "en",
+    });
+
+    expect(processed.conclusion).toBe("The face has several rough edges.");
+    expect(processed.conclusion).not.toContain("ㅋㅋ");
+    expect(processed.conclusion).not.toContain("처참");
+  });
 });
 
 function makeSections(overrides: Partial<ReportSections>): ReportSections {

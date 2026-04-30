@@ -1,0 +1,54 @@
+{
+  "under_35": {
+    "neutral": [
+      "A face with a surprisingly approachable first impression",
+      "The overall vibe carries more than the details",
+      "A calm impression that becomes easier to like over time",
+      "The face holds together better than the camera setup suggests",
+      "A balanced look with a few memorable quirks",
+      "A first impression that avoids obvious damage"
+    ],
+    "male": [
+      "A clean first impression with room for sharper styling",
+      "The friendly tone lands before the facial math gets picky",
+      "A face that improves once conversation starts",
+      "Not flashy, but stable enough to work in real life",
+      "The baseline impression is more reliable than dramatic",
+      "A neat look that benefits from simple presentation"
+    ],
+    "female": [
+      "A soft first impression that reads better in motion",
+      "The mood carries the face in a natural way",
+      "A face that responds well to understated styling",
+      "The impression is gentle, with a few structural quirks",
+      "A natural smile would do a lot of useful work here",
+      "The overall vibe is more persuasive than individual details"
+    ]
+  },
+  "over_35": {
+    "neutral": [
+      "A composed impression with enough stability to land well",
+      "The face reads calm, even when the details get uneven",
+      "A reliable first impression with room for polish",
+      "The overall presence is steadier than the individual metrics",
+      "A mature impression that benefits from clean presentation",
+      "The face feels approachable before it feels distinctive"
+    ],
+    "male": [
+      "A steady impression that suits a restrained style",
+      "The face has a practical kind of trustworthiness",
+      "A calm look that works best without trying too hard",
+      "The mature tone carries the first impression reasonably well",
+      "A clean presentation would do more here than dramatic styling",
+      "The face lands as stable, with a few tired edges"
+    ],
+    "female": [
+      "A composed face with a gentle, polished first impression",
+      "The calm tone is the strongest part of the impression",
+      "A restrained style would match this face well",
+      "The overall mood reads more graceful than flashy",
+      "The first impression is stable, with a few visible tensions",
+      "A natural presentation is likely to work better than heavy styling"
+    ]
+  }
+}

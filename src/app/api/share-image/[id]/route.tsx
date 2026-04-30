@@ -1,6 +1,8 @@
 import { ImageResponse } from "next/og";
 import { backfillStoredReportSections } from "@/lib/analysis/reportBackfill";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { normalizeLocale } from "@/lib/i18n/locales";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { reportSectionsSchema, type FaceReportRow } from "@/types/analysis";
 
@@ -17,14 +19,17 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   if (error || !data) return new Response("Not found", { status: 404 });
 
   const row = data as FaceReportRow;
+  const locale = normalizeLocale(row.locale);
+  const dictionary = getDictionary(locale);
   if (new Date(row.expires_at).getTime() <= Date.now()) return new Response("Not found", { status: 404 });
   if (row.status !== "complete" || !row.face_image_path || !row.report_sections_json) return new Response("Not found", { status: 404 });
 
   const sections = postprocessReportSections(reportSectionsSchema.parse(backfillStoredReportSections(row.report_sections_json)), {
     gender: row.gender,
     tone: row.analysis_tone ?? "roast",
+    locale,
   });
-  const mainCopy = normalizeShareCopy(row.main_copy?.trim() || sections.mainCopy || "AI 얼평보고서 결과");
+  const mainCopy = normalizeShareCopy(row.main_copy?.trim() || sections.mainCopy || dictionary.brand.resultTitle);
   const { data: faceBlob, error: faceError } = await supabase.storage.from("face-images").download(row.face_image_path);
   if (faceError || !faceBlob) return new Response("Not found", { status: 404 });
 
@@ -117,7 +122,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
             }}
           >
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", fontSize: 30, fontWeight: 900 }}>AI 얼평보고서</div>
+              <div style={{ display: "flex", fontSize: 30, fontWeight: 900 }}>{dictionary.brand.title}</div>
               <div style={{ display: "flex", marginTop: 8, color: "#a0a8b8", fontSize: 18, fontWeight: 700 }}>
                 Forensic-grade facial diagnostics
               </div>
@@ -133,7 +138,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
                 padding: "10px 16px",
               }}
             >
-              결과 보러가기
+              {dictionary.result.shareCta}
             </div>
           </div>
         </div>

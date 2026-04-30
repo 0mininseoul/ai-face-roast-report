@@ -78,7 +78,7 @@ describe("POST /admindata/api/manual-analysis", () => {
     expect(body).toMatchObject({
       reportId: REPORT_ID,
       status: "queued",
-      publicResultUrl: `https://example.com/result/${REPORT_ID}`,
+      publicResultUrl: `https://example.com/ko/result/${REPORT_ID}`,
       adminResultUrl: `https://example.com/admindata/facereportpages/${REPORT_ID}`,
     });
 
@@ -88,6 +88,7 @@ describe("POST /admindata/api/manual-analysis", () => {
       status: "queued",
       analysis_source: "manual_upload",
       analysis_tone: "balanced",
+      locale: "ko",
       admin_note: "manual exception",
       manual_detected_face_count: 2,
     });

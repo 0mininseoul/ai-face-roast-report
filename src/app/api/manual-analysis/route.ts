@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
 import { drainAnalysisQueue } from "@/lib/analysis/jobRunner";
 import { checkDailyQuota, recordQuotaUsage } from "@/lib/analysis/quota";
+import { LOCALE_HEADER, isLocale, localizedResultPath, normalizeLocale } from "@/lib/i18n/locales";
 import { checkRateLimit, ipFromRequest, ipHash } from "@/lib/ratelimit";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
@@ -16,6 +17,7 @@ const MAX_IMAGE_BYTES = 2_500_000;
 interface PublicManualAnalysisRequestBody {
   gender?: unknown;
   analysisTone?: unknown;
+  locale?: unknown;
   deviceId?: unknown;
   imageBase64?: unknown;
   metrics?: unknown;
@@ -47,13 +49,14 @@ export async function POST(req: NextRequest) {
 
   const gender = parseGender(body.gender);
   const analysisTone = body.analysisTone === undefined ? "roast" : parseAnalysisTone(body.analysisTone);
+  const locale = body.locale === undefined ? normalizeLocale(req.headers.get(LOCALE_HEADER)) : parseLocale(body.locale);
   const deviceId = sanitizeDeviceId(body.deviceId);
   const imageBase64 = typeof body.imageBase64 === "string" ? body.imageBase64 : "";
   const metrics = isObject(body.metrics) ? (body.metrics as unknown as FaceMetrics) : null;
   const landmarks = parseLandmarks(body.landmarks);
   const manualDetectedFaceCount = parseDetectedFaceCount(body.manualDetectedFaceCount);
 
-  if (!gender || !analysisTone || !imageBase64 || !metrics || !landmarks || manualDetectedFaceCount === null) {
+  if (!gender || !analysisTone || !locale || !imageBase64 || !metrics || !landmarks || manualDetectedFaceCount === null) {
     await logServiceEvent({
       req,
       eventName: "manual_analysis_missing_required_fields",
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
       payload: {
         hasGender: Boolean(gender),
         hasAnalysisTone: Boolean(analysisTone),
+        hasLocale: Boolean(locale),
         hasImage: Boolean(imageBase64),
         hasMetrics: Boolean(metrics),
         hasLandmarks: Boolean(landmarks),
@@ -120,6 +124,7 @@ export async function POST(req: NextRequest) {
       attempt_count: 0,
       analysis_source: "manual_upload",
       analysis_tone: analysisTone,
+      locale,
       admin_note: null,
       manual_detected_face_count: manualDetectedFaceCount,
     })
@@ -177,7 +182,7 @@ export async function POST(req: NextRequest) {
     reportId,
     eventName: "manual_analysis_report_created",
     phase: "public_manual_storage",
-    payload: { gender, analysisTone, bytes: imageBuffer.length, detectedFaceCount: manualDetectedFaceCount, deviceId },
+    payload: { gender, analysisTone, locale, bytes: imageBuffer.length, detectedFaceCount: manualDetectedFaceCount, deviceId },
   });
 
   waitUntil(
@@ -188,7 +193,7 @@ export async function POST(req: NextRequest) {
         eventName: "manual_analysis_background_start_failed",
         phase: "public_manual_worker",
         level: "error",
-        payload: { message: analysisErrorMessage(error), providerMessage: extractErrorText(error), deviceId },
+        payload: { message: analysisErrorMessage(error, locale), providerMessage: extractErrorText(error), deviceId },
       }),
     ),
   );
@@ -197,7 +202,7 @@ export async function POST(req: NextRequest) {
     {
       reportId,
       status: "queued",
-      publicResultUrl: `${req.nextUrl.origin}/result/${reportId}`,
+      publicResultUrl: `${req.nextUrl.origin}${localizedResultPath(reportId, locale)}`,
     },
     { status: 202 },
   );
@@ -209,6 +214,10 @@ function parseGender(value: unknown): Gender | null {
 
 function parseAnalysisTone(value: unknown): AnalysisTone | null {
   return value === "roast" || value === "balanced" ? value : null;
+}
+
+function parseLocale(value: unknown) {
+  return isLocale(value) ? value : null;
 }
 
 function parseDetectedFaceCount(value: unknown): number | null {

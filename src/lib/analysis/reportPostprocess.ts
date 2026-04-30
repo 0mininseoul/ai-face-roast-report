@@ -1,4 +1,5 @@
 import type { AnalysisTone, Gender, ReportSections } from "@/types/analysis";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 
 const SENSITIVE_SEXUAL_EXPERIENCE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/모\s*쏠\s*아\s*다/gi, "연애 운까지 박살난 타입"],
@@ -90,9 +91,15 @@ const RAW_METRIC_MENTION_RE = /(?<!\d)(?:\d+(?:\.\d+)?\s*(?:%|도|mm|점)|0\.\d+
 interface PostprocessOptions {
   gender?: Gender;
   tone?: AnalysisTone;
+  locale?: Locale;
 }
 
 export function postprocessReportSections(sections: ReportSections, options: PostprocessOptions = {}): ReportSections {
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  if (locale !== "ko") {
+    return postprocessInternationalReportSections(sections, { ...options, locale });
+  }
+
   const hasOriginalConclusion = Boolean(sections.conclusion?.trim());
   const storageSanitized = sanitizeStorageMentions(sections);
   const ageAligned = alignUserFacingAgeMentions(storageSanitized);
@@ -122,6 +129,31 @@ export function postprocessReportSections(sections: ReportSections, options: Pos
     ...sanitized,
     conclusion: usesPoliteTone ? stripCasualLaughs(conclusion) : ensureMockingLaugh(conclusion),
     mainCopy: usesPoliteTone ? stripCasualLaughs(sanitized.mainCopy) : sanitized.mainCopy,
+  };
+}
+
+function postprocessInternationalReportSections(
+  sections: ReportSections,
+  options: PostprocessOptions & { locale: Exclude<Locale, "ko"> },
+): ReportSections {
+  const hasOriginalConclusion = Boolean(sections.conclusion?.trim());
+  const sanitized = mapReportText(sections, (text) => sanitizeInternationalText(text, options.locale));
+  const fallbackConclusion =
+    options.locale === "ja"
+      ? "全体的に印象と比率にいくつかの弱点が見られます。"
+      : "Overall, several signals work against the first impression.";
+  const balancedConclusion =
+    options.locale === "ja"
+      ? "全体的に安定した部分と改善余地が一緒に見られます。第一印象は大きく崩れていませんが、表情が落ち着きすぎて少し事務的に見えます。"
+      : "Overall, stable points and areas for improvement appear together. The first impression does not collapse, but the expression is neutral enough to feel a little administrative.";
+
+  return {
+    ...sanitized,
+    conclusion:
+      options.tone === "balanced" && !hasOriginalConclusion
+        ? balancedConclusion
+        : sanitized.conclusion?.trim() || (options.tone === "balanced" ? balancedConclusion : fallbackConclusion),
+    mainCopy: sanitized.mainCopy?.trim() || "",
   };
 }
 
@@ -341,6 +373,20 @@ export function sanitizeText(text: string): string {
   return sanitizeSensitiveSexualExperience(text)
     .replace(/[^.!?\n。]*?(?:서버|DB|데이터베이스|저장소)[^.!?\n。]*?(?:저장|보관|업로드|전송|남기|기록)[^.!?\n。]*[.!?。]?/gi, "")
     .replace(/[^.!?\n。]*?(?:저장|보관|업로드|전송|기록)[^.!?\n。]*?(?:서버|DB|데이터베이스|저장소)[^.!?\n。]*[.!?。]?/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function sanitizeInternationalText(text: string, locale: Exclude<Locale, "ko">): string {
+  const storagePattern =
+    locale === "ja"
+      ? /[^.!?\n。]*?(?:サーバー|DB|データベース|ストレージ)[^.!?\n。]*?(?:保存|保管|アップロード|送信|記録)[^.!?\n。]*[.!?。]?/gi
+      : /[^.!?\n。]*?(?:server|db|database|storage)[^.!?\n。]*?(?:save|store|upload|transmit|record)[^.!?\n。]*[.!?。]?/gi;
+
+  return sanitizeSensitiveSexualExperience(text)
+    .replace(storagePattern, "")
+    .replace(/\bvirgin(?:ity)?\b/gi, "private life")
+    .replace(/処女|童貞|性経験/g, "私生活")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

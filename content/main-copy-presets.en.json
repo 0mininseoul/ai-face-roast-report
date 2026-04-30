@@ -1,0 +1,54 @@
+{
+  "under_35": {
+    "neutral": [
+      "The analysis finished, and your mirror may need a minute",
+      "A face that makes the algorithm clear its throat first",
+      "This is less a face report and more a damage assessment",
+      "The camera did its job, which is unfortunate for everyone",
+      "Your first impression arrives with its own warning label",
+      "Even the pixels look like they want legal counsel"
+    ],
+    "male": [
+      "Dating apps may classify this as advanced difficulty",
+      "The jawline tried, but the rest of the face missed the meeting",
+      "This face could make a group photo reorganize itself",
+      "The confidence is optional, the damage is not",
+      "Some faces open doors; this one asks where the side entrance is",
+      "The analysis says bro, maybe keep the personality loud"
+    ],
+    "female": [
+      "The selfie filter has officially filed a complaint",
+      "This face makes the front camera feel underpaid",
+      "The lighting is not the main suspect here",
+      "Your profile photo strategy may need a board meeting",
+      "The camera angle cannot carry this whole department",
+      "Even beauty mode looks like it wants a transfer"
+    ]
+  },
+  "over_35": {
+    "neutral": [
+      "The report suggests staying near the edge of group photos",
+      "This impression has aged into a very confident problem",
+      "The face has presence, though not necessarily the helpful kind",
+      "Retaking the photo may not change the main issue",
+      "The mirror appears to have been unusually honest",
+      "A calm face, but not one the room asked to study closely"
+    ],
+    "male": [
+      "The suit can help the outfit, not the entire situation",
+      "This is a boardroom face that should rely on slides",
+      "The report recommends letting the lighting take some responsibility",
+      "There is maturity here, mostly in the list of concerns",
+      "The expression has the energy of a meeting that should have been an email",
+      "The camera found experience, then kept finding more problems"
+    ],
+    "female": [
+      "The styling can help, but it is not doing charity work",
+      "The face carries composure and several unresolved visual invoices",
+      "Retakes may improve the photo, not the full situation",
+      "The report suggests entering reunions after the camera is put away",
+      "There is elegance here, though it is working overtime",
+      "The expression is calm enough to make the flaws look organized"
+    ]
+  }
+}

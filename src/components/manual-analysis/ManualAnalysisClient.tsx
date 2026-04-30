@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { getFaceImageLandmarker } from "@/lib/facemesh/faceLandmarker";
 import { computeFaceMetrics } from "@/lib/facemesh/metricsCalculator";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, localizedResultPath, type Locale } from "@/lib/i18n/locales";
 import { getClientDeviceId } from "@/lib/telemetry/client";
 import type { AnalysisTone, FaceMetrics, Gender, Landmark } from "@/types/analysis";
 
@@ -34,8 +36,10 @@ interface CreatedManualReport {
 type PreparationStatus = "idle" | "preparing" | "ready" | "error";
 type ManualAnalysisMode = "public" | "admin";
 
-export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysisMode }) {
+export function ManualAnalysisClient({ mode = "public", locale = DEFAULT_LOCALE }: { mode?: ManualAnalysisMode; locale?: Locale }) {
   const router = useRouter();
+  const [reportLocale, setReportLocale] = useState<Locale>(locale);
+  const dictionary = getDictionary(reportLocale);
   const [gender, setGender] = useState<Gender>("male");
   const [analysisTone, setAnalysisTone] = useState<AnalysisTone>("roast");
   const [adminNote, setAdminNote] = useState("");
@@ -55,9 +59,12 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
   const canSubmit = status === "ready" && Boolean(prepared) && consentReady && !submitting;
   const faceWarning = useMemo(() => {
     if (!prepared) return null;
-    if (prepared.detectedFaceCount > 1) return `얼굴 ${prepared.detectedFaceCount}개 감지됨. MediaPipe 첫 번째 얼굴로 분석합니다.`;
-    return "얼굴 1개 감지됨. 분석 요청 가능.";
-  }, [prepared]);
+    if (prepared.detectedFaceCount > 1) {
+      if (reportLocale === "en") return `${prepared.detectedFaceCount} ${dictionary.manual.readyManySuffix}`;
+      return `${dictionary.manual.readyManyPrefix} ${prepared.detectedFaceCount}${dictionary.manual.readyManySuffix}`;
+    }
+    return dictionary.manual.readyOne;
+  }, [dictionary.manual.readyManyPrefix, dictionary.manual.readyManySuffix, dictionary.manual.readyOne, prepared, reportLocale]);
 
   const handleFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -72,16 +79,16 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
 
     setStatus("preparing");
     try {
-      const next = await prepareManualImage(file);
+      const next = await prepareManualImage(file, dictionary.manual);
       setPrepared(next);
       setStatus("ready");
     } catch (caught) {
       setStatus("error");
-      setError(caught instanceof Error ? caught.message : "이미지 준비 중 오류가 발생했습니다.");
+      setError(caught instanceof Error ? caught.message : dictionary.manual.requestFailed);
     } finally {
       event.target.value = "";
     }
-  }, []);
+  }, [dictionary.manual]);
 
   const submit = useCallback(async () => {
     if (!prepared) return;
@@ -97,6 +104,7 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
         body: JSON.stringify({
           gender,
           analysisTone,
+          locale: reportLocale,
           deviceId: getClientDeviceId(),
           imageBase64: prepared.imageBase64,
           metrics: prepared.metrics,
@@ -107,16 +115,16 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
       });
       const payload = (await response.json().catch(() => null)) as (CreatedManualReport & { error?: string; message?: string }) | null;
       if (!response.ok || !payload) {
-        throw new Error(payload?.message || payload?.error || "수동 분석 요청을 생성하지 못했습니다.");
+        throw new Error(payload?.message || payload?.error || dictionary.manual.requestCreateFailed);
       }
       setCreated(payload);
-      if (!isAdmin) router.push(`/result/${payload.reportId}`);
+      if (!isAdmin) router.push(payload.publicResultUrl || localizedResultPath(payload.reportId, reportLocale));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "이미지 분석 요청 중 오류가 발생했습니다.");
+      setError(caught instanceof Error ? caught.message : dictionary.manual.requestFailed);
     } finally {
       setSubmitting(false);
     }
-  }, [adminNote, analysisTone, endpoint, gender, isAdmin, prepared, router]);
+  }, [adminNote, analysisTone, dictionary.manual.requestCreateFailed, dictionary.manual.requestFailed, endpoint, gender, isAdmin, prepared, reportLocale, router]);
 
   const copy = useCallback(async (label: string, value: string) => {
     await navigator.clipboard.writeText(value);
@@ -128,9 +136,9 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
     <main className="min-h-screen bg-black px-4 py-6 sm:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
-          <Logo />
+          <Logo locale={reportLocale} />
           <span className="w-fit text-xs font-black uppercase tracking-[0.16em] text-text-muted">
-            {isAdmin ? "Admin image upload" : "Image upload analysis"}
+            {isAdmin ? dictionary.manual.adminBadge : dictionary.manual.publicBadge}
           </span>
         </header>
 
@@ -138,32 +146,42 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
           <section className="glass-panel rounded-2xl p-5 sm:p-6">
             <div className="mb-6">
               <p className="text-xs font-black uppercase tracking-[0.14em] text-[var(--accent-info)]">
-                {isAdmin ? "Manual exception" : "Upload input"}
+                {isAdmin ? dictionary.manual.adminEyebrow : dictionary.manual.publicEyebrow}
               </p>
-              <h1 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">이미지 업로드 분석</h1>
+              <h1 className="mt-2 text-2xl font-black text-text-primary sm:text-3xl">{dictionary.manual.title}</h1>
               <p className="mt-3 text-sm leading-6 text-text-muted">
                 {isAdmin
-                  ? "관리자 승인 케이스 전용입니다. 공개 결과는 7일 동안 접근 가능합니다."
-                  : "카메라 대신 사진을 업로드해 AI 얼평보고서를 생성합니다. 공개 결과는 7일 동안 접근 가능합니다."}
+                  ? dictionary.manual.adminDescription
+                  : dictionary.manual.publicDescription}
               </p>
             </div>
 
             <div className="space-y-5">
-              <FieldBlock label="Gender">
+              {isAdmin && (
+                <FieldBlock label="Locale">
+                  <div className="grid grid-cols-3 gap-2">
+                    {SUPPORTED_LOCALES.map((value) => (
+                      <ChoiceButton key={value} active={reportLocale === value} title={value.toUpperCase()} onClick={() => setReportLocale(value)} />
+                    ))}
+                  </div>
+                </FieldBlock>
+              )}
+
+              <FieldBlock label={dictionary.manual.gender}>
                 <div className="grid grid-cols-2 gap-2">
-                  <ChoiceButton active={gender === "male"} title="남성" onClick={() => setGender("male")} />
-                  <ChoiceButton active={gender === "female"} title="여성" onClick={() => setGender("female")} />
+                  <ChoiceButton active={gender === "male"} title={dictionary.entry.genderMale} onClick={() => setGender("male")} />
+                  <ChoiceButton active={gender === "female"} title={dictionary.entry.genderFemale} onClick={() => setGender("female")} />
                 </div>
               </FieldBlock>
 
-              <FieldBlock label="Analysis tone">
+              <FieldBlock label={dictionary.manual.tone}>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <ChoiceButton active={analysisTone === "roast"} title="매운 맛 (주의)" description="기존 로스팅 톤" onClick={() => setAnalysisTone("roast")} />
-                  <ChoiceButton active={analysisTone === "balanced"} title="객관적 평가" description="욕설 없는 유머 평가" onClick={() => setAnalysisTone("balanced")} />
+                  <ChoiceButton active={analysisTone === "roast"} title={dictionary.entry.roastTitle} description={dictionary.entry.roastDescription} onClick={() => setAnalysisTone("roast")} />
+                  <ChoiceButton active={analysisTone === "balanced"} title={dictionary.entry.balancedTitle} description={dictionary.entry.balancedDescription} onClick={() => setAnalysisTone("balanced")} />
                 </div>
               </FieldBlock>
 
-              <FieldBlock label="Image">
+              <FieldBlock label={dictionary.manual.image}>
                 <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border-bright bg-black/25 px-4 py-6 text-center transition hover:border-[var(--accent-info)] hover:bg-bg-card/70">
                   <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} />
                   {status === "preparing" ? (
@@ -172,28 +190,28 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
                     <ImageUp className="h-7 w-7 text-[var(--accent-info)]" />
                   )}
                   <span className="mt-3 text-sm font-bold text-text-primary">
-                    {status === "preparing" ? "이미지 준비 중" : "JPEG, PNG, WebP 업로드"}
+                    {status === "preparing" ? dictionary.manual.uploadPreparing : dictionary.manual.uploadIdle}
                   </span>
-                  <span className="mt-1 text-xs text-text-muted">8MB 이하</span>
+                  <span className="mt-1 text-xs text-text-muted">{dictionary.manual.uploadLimit}</span>
                 </label>
               </FieldBlock>
 
               {isAdmin && (
-                <FieldBlock label="Admin note">
+                <FieldBlock label={dictionary.manual.adminNote}>
                   <textarea
                     value={adminNote}
                     onChange={(event) => setAdminNote(event.target.value.slice(0, 500))}
                     className="min-h-24 w-full resize-y rounded-lg border border-border bg-black/30 px-3 py-3 text-sm text-text-primary outline-none transition placeholder:text-text-faint focus:border-[var(--accent-info)]"
-                    placeholder="운영 메모. 결과 화면에는 노출되지 않습니다."
+                    placeholder={dictionary.manual.adminNotePlaceholder}
                   />
                 </FieldBlock>
               )}
 
               {!isAdmin && (
                 <div className="space-y-3">
-                  <Consent checked={age} onChange={setAge} label="본인은 만 14세 이상이며 본인의 얼굴만 분석합니다" singleLine />
-                  <Consent checked={expires} onChange={setExpires} label="분석된 얼굴과 데이터는 7일 뒤 삭제되어 더 이상 열람할 수 없습니다" />
-                  <Consent checked={lawsuit} onChange={setLawsuit} label="어떤 내용이 나오건 상처받지 않고 개발자를 고소하지 않겠습니다" />
+                  <Consent checked={age} onChange={setAge} label={dictionary.entry.ageConsent} singleLine={reportLocale === "ko"} />
+                  <Consent checked={expires} onChange={setExpires} label={dictionary.manual.expires7Consent} />
+                  <Consent checked={lawsuit} onChange={setLawsuit} label={dictionary.entry.lawsuitConsent} />
                 </div>
               )}
 
@@ -209,20 +227,20 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
                 icon={submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 onClick={submit}
               >
-                {submitting ? "분석 대기열 등록 중" : "이미지 분석 생성"}
+                {submitting ? dictionary.manual.submitting : dictionary.manual.submit}
               </Button>
 
               {!isAdmin && (
                 <p className="text-center text-xs leading-5 text-text-faint">
-                  분석 생성 시{" "}
-                  <Link className="text-text-muted underline underline-offset-4" href="/terms" target="_blank">
-                    이용약관
+                  {dictionary.manual.createTermsPrefix}{" "}
+                  <Link className="text-text-muted underline underline-offset-4" href={`/${reportLocale}/terms`} target="_blank">
+                    {dictionary.entry.terms}
                   </Link>
-                  과{" "}
-                  <Link className="text-text-muted underline underline-offset-4" href="/privacy" target="_blank">
-                    개인정보처리방침
+                  {" / "}
+                  <Link className="text-text-muted underline underline-offset-4" href={`/${reportLocale}/privacy`} target="_blank">
+                    {dictionary.entry.privacy}
                   </Link>
-                  에 동의한 것으로 간주됩니다.
+                  {dictionary.entry.termsSuffix ? ` ${dictionary.entry.termsSuffix}` : ""}
                 </p>
               )}
             </div>
@@ -230,7 +248,7 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
 
           <section className="glass-panel rounded-2xl p-4 sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-black uppercase tracking-[0.12em] text-text-muted">Preview</h2>
+              <h2 className="text-sm font-black uppercase tracking-[0.12em] text-text-muted">{dictionary.manual.preview}</h2>
               <span className="rounded-md border border-border bg-black/30 px-2 py-1 text-xs font-semibold text-text-muted">
                 {prepared ? `${prepared.width}x${prepared.height}` : status}
               </span>
@@ -239,9 +257,9 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
             <div className="grid min-h-[24rem] place-items-center overflow-hidden rounded-lg border border-border bg-black/35">
               {prepared ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={prepared.imageBase64} alt="수동 분석 이미지 미리보기" className="max-h-[70vh] w-full object-contain" />
+                <img src={prepared.imageBase64} alt={dictionary.manual.previewAlt} className="max-h-[70vh] w-full object-contain" />
               ) : (
-                <p className="px-6 text-center text-sm text-text-muted">업로드한 이미지가 여기에 표시됩니다.</p>
+                <p className="px-6 text-center text-sm text-text-muted">{dictionary.manual.previewEmpty}</p>
               )}
             </div>
 
@@ -249,15 +267,15 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
               <div className="mt-5 border-t border-border pt-5">
                 <div className="mb-4 flex items-center gap-2 text-[var(--accent-ok)]">
                   <CheckCircle2 className="h-5 w-5" />
-                  <h2 className="text-lg font-black text-text-primary">분석 요청 생성 완료</h2>
+                  <h2 className="text-lg font-black text-text-primary">{dictionary.manual.created}</h2>
                 </div>
                 {isAdmin ? (
                   <div className="space-y-3 text-sm">
-                    <LinkRow label="공개 결과" href={created.publicResultUrl} copied={copied === "public"} onCopy={() => copy("public", created.publicResultUrl)} />
-                    {created.adminResultUrl && <LinkRow label="관리자 결과" href={created.adminResultUrl} copied={copied === "admin"} onCopy={() => copy("admin", created.adminResultUrl!)} />}
+                    <LinkRow label={dictionary.manual.publicResult} href={created.publicResultUrl} copied={copied === "public"} onCopy={() => copy("public", created.publicResultUrl)} copyLabel={dictionary.manual.copy} copiedLabel={dictionary.result.copied} openLabel={dictionary.manual.open} />
+                    {created.adminResultUrl && <LinkRow label={dictionary.manual.adminResult} href={created.adminResultUrl} copied={copied === "admin"} onCopy={() => copy("admin", created.adminResultUrl!)} copyLabel={dictionary.manual.copy} copiedLabel={dictionary.result.copied} openLabel={dictionary.manual.open} />}
                   </div>
                 ) : (
-                  <p className="text-sm leading-6 text-text-muted">결과 페이지로 이동 중입니다.</p>
+                  <p className="text-sm leading-6 text-text-muted">{dictionary.manual.redirecting}</p>
                 )}
                 <Button
                   type="button"
@@ -271,7 +289,7 @@ export function ManualAnalysisClient({ mode = "public" }: { mode?: ManualAnalysi
                     setError(null);
                   }}
                 >
-                  새 이미지 준비
+                  {dictionary.manual.reset}
                 </Button>
               </div>
             )}
@@ -349,11 +367,17 @@ function LinkRow({
   href,
   copied,
   onCopy,
+  copyLabel,
+  copiedLabel,
+  openLabel,
 }: {
   label: string;
   href: string;
   copied: boolean;
   onCopy: () => void;
+  copyLabel: string;
+  copiedLabel: string;
+  openLabel: string;
 }) {
   return (
     <div className="rounded-lg border border-border bg-black/30 p-3">
@@ -362,11 +386,11 @@ function LinkRow({
         <div className="flex items-center gap-2">
           <button className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-bold text-text-primary transition hover:border-[var(--accent-info)]" type="button" onClick={onCopy}>
             <Copy className="h-3.5 w-3.5" />
-            {copied ? "복사됨" : "복사"}
+            {copied ? copiedLabel : copyLabel}
           </button>
           <a className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-bold text-text-primary transition hover:border-[var(--accent-info)]" href={href} target="_blank" rel="noreferrer">
             <ExternalLink className="h-3.5 w-3.5" />
-            열기
+            {openLabel}
           </a>
         </div>
       </div>
@@ -375,24 +399,24 @@ function LinkRow({
   );
 }
 
-async function prepareManualImage(file: File): Promise<PreparedManualImage> {
+async function prepareManualImage(file: File, messages: ReturnType<typeof getDictionary>["manual"]): Promise<PreparedManualImage> {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    throw new Error("JPEG, PNG, WebP 이미지만 업로드할 수 있습니다.");
+    throw new Error(messages.invalidType);
   }
   if (file.size <= 0 || file.size > MAX_ORIGINAL_BYTES) {
-    throw new Error("원본 이미지는 8MB 이하만 업로드할 수 있습니다.");
+    throw new Error(messages.tooLarge);
   }
 
-  const originalDataUrl = await readFileDataUrl(file);
-  const sourceImage = await loadImage(originalDataUrl);
-  const normalized = normalizeToJpeg(sourceImage);
-  const analysisImage = await loadImage(normalized.dataUrl);
+  const originalDataUrl = await readFileDataUrl(file, messages.readFailed);
+  const sourceImage = await loadImage(originalDataUrl, messages.loadFailed);
+  const normalized = normalizeToJpeg(sourceImage, messages.canvasFailed);
+  const analysisImage = await loadImage(normalized.dataUrl, messages.loadFailed);
   const landmarker = await getFaceImageLandmarker("CPU");
   const result = landmarker.detect(analysisImage);
   const faceLandmarks = result.faceLandmarks ?? [];
   const firstFace = faceLandmarks[0];
   if (!firstFace) {
-    throw new Error("이미지에서 얼굴을 찾지 못했습니다. 얼굴이 선명한 1인 이미지를 사용하세요.");
+    throw new Error(messages.noFace);
   }
 
   const landmarks = firstFace.map((point) => ({ x: point.x, y: point.y, z: point.z ?? 0 }));
@@ -407,7 +431,7 @@ async function prepareManualImage(file: File): Promise<PreparedManualImage> {
   };
 }
 
-function normalizeToJpeg(image: HTMLImageElement): { dataUrl: string; width: number; height: number } {
+function normalizeToJpeg(image: HTMLImageElement, canvasFailedMessage: string): { dataUrl: string; width: number; height: number } {
   const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
   const height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -415,27 +439,27 @@ function normalizeToJpeg(image: HTMLImageElement): { dataUrl: string; width: num
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("브라우저에서 이미지 캔버스를 만들 수 없습니다.");
+  if (!ctx) throw new Error(canvasFailedMessage);
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(image, 0, 0, width, height);
   return { dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), width, height };
 }
 
-function readFileDataUrl(file: File): Promise<string> {
+function readFileDataUrl(file: File, readFailedMessage: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => (typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("이미지를 읽지 못했습니다.")));
-    reader.onerror = () => reject(new Error("이미지를 읽지 못했습니다."));
+    reader.onload = () => (typeof reader.result === "string" ? resolve(reader.result) : reject(new Error(readFailedMessage)));
+    reader.onerror = () => reject(new Error(readFailedMessage));
     reader.readAsDataURL(file);
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string, loadFailedMessage: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("이미지를 불러오지 못했습니다."));
+    image.onerror = () => reject(new Error(loadFailedMessage));
     image.src = src;
   });
 }

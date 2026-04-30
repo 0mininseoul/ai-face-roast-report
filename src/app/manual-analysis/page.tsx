@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { ManualAnalysisClient } from "@/components/manual-analysis/ManualAnalysisClient";
+import { DEFAULT_LOCALE } from "@/lib/i18n/locales";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,5 +13,5 @@ export const metadata: Metadata = {
 
 export default function PublicManualAnalysisPage() {
   noStore();
-  return <ManualAnalysisClient />;
+  return <ManualAnalysisClient locale={DEFAULT_LOCALE} />;
 }

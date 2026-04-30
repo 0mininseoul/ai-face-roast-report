@@ -2,6 +2,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import { analysisErrorMessage } from "@/lib/analysis/errors";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 import type { AnalyzeRequestBody, AnalyzeStartResponse, AnalyzeStatusResponse, FaceReportStatus, ReportSections } from "@/types/analysis";
 
 export interface AnalysisStreamState {
@@ -33,6 +35,7 @@ const initial: AnalysisStreamState = {
 };
 
 interface AnalysisStreamOptions {
+  locale?: Locale;
   onEvent?: (eventName: string, payload?: Record<string, unknown>, reportId?: string | null) => void;
 }
 
@@ -44,6 +47,8 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
   const [state, setState] = useState<AnalysisStreamState>(initial);
   const runIdRef = useRef(0);
   const onEvent = options?.onEvent;
+  const locale = options?.locale ?? DEFAULT_LOCALE;
+  const dictionary = getDictionary(locale);
 
   const start = useCallback(async (body: AnalyzeRequestBody) => {
     const runId = runIdRef.current + 1;
@@ -52,7 +57,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
       setState((current) => (runIdRef.current === runId ? updater(current) : current));
     };
 
-    setState({ ...initial, isStreaming: true, statusMessage: "정밀 분석 요청을 전송하고 있습니다." });
+    setState({ ...initial, isStreaming: true, statusMessage: dictionary.progress.sending });
     onEvent?.("analysis_fetch_started", { phase: "client_fetch", gender: body.gender, analysisTone: body.analysisTone ?? "roast" });
 
     let response: Response;
@@ -63,7 +68,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
         body: JSON.stringify(body),
       });
     } catch (error) {
-      const message = analysisErrorMessage(error);
+      const message = analysisErrorMessage(error, locale);
       onEvent?.("analysis_fetch_failed", { phase: "client_fetch", message }, null);
       updateState((current) => ({ ...current, isStreaming: false, error: message }));
       return null;
@@ -73,7 +78,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
 
     if (!response.ok) {
       const text = await response.text();
-      const message = analysisErrorMessage(text || response.status);
+      const message = analysisErrorMessage(text || response.status, locale);
       onEvent?.("analysis_response_rejected", { phase: "client_fetch", status: response.status, message });
       updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message }));
       return null;
@@ -83,7 +88,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
     try {
       queued = (await response.json()) as AnalyzeStartResponse;
     } catch (error) {
-      const message = analysisErrorMessage(error);
+      const message = analysisErrorMessage(error, locale);
       onEvent?.("analysis_response_parse_failed", { phase: "client_fetch", message });
       updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message }));
       return null;
@@ -112,7 +117,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
       try {
         statusResponse = await fetch(`/api/analyze/status?id=${encodeURIComponent(finalReportId)}`, { cache: "no-store" });
       } catch (error) {
-        const message = analysisErrorMessage(error);
+        const message = analysisErrorMessage(error, locale);
         onEvent?.("analysis_status_fetch_failed", { phase: "client_poll", message, pollCount }, finalReportId);
         updateState((current) => ({ ...current, statusMessage: message, pollCount }));
         continue;
@@ -120,7 +125,7 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
 
       if (!statusResponse.ok) {
         const text = await statusResponse.text();
-        const message = analysisErrorMessage(text || statusResponse.status);
+        const message = analysisErrorMessage(text || statusResponse.status, locale);
         onEvent?.("analysis_status_rejected", { phase: "client_poll", status: statusResponse.status, message, pollCount }, finalReportId);
         updateState((current) => ({ ...current, isStreaming: false, statusMessage: null, error: message, pollCount }));
         return finalReportId;
@@ -186,11 +191,16 @@ export function useAnalysisStream(options?: AnalysisStreamOptions) {
       }));
     }
 
-    const message = "분석 대기 시간이 길어지고 있습니다. 결과 링크에서 잠시 후 다시 확인해 주세요.";
+    const message =
+      locale === "en"
+        ? "Analysis is taking longer than expected. Check the result link again shortly."
+        : locale === "ja"
+          ? "分析待ち時間が長くなっています。しばらくしてから結果リンクで再確認してください。"
+          : "분석 대기 시간이 길어지고 있습니다. 결과 링크에서 잠시 후 다시 확인해 주세요.";
     onEvent?.("analysis_status_poll_timeout", { phase: "client_poll", message }, finalReportId);
     updateState((current) => ({ ...current, isStreaming: false, statusMessage: message, error: message }));
     return finalReportId;
-  }, [onEvent]);
+  }, [dictionary.progress.sending, locale, onEvent]);
 
   return { state, start };
 }

@@ -4,12 +4,15 @@ import { MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/Button";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
 
 const MAX_LENGTH = 2000;
 
 type Status = "idle" | "submitting" | "sent" | "error";
 
-export function FeedbackButton({ reportId }: { reportId: string }) {
+export function FeedbackButton({ reportId, locale = DEFAULT_LOCALE }: { reportId: string; locale?: Locale }) {
+  const dictionary = getDictionary(locale);
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -44,8 +47,8 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         setErrorMsg(
           data.error === "rate_limited"
-            ? "요청이 너무 잦습니다. 잠시 후 다시 시도해주세요."
-            : "전송에 실패했어요. 다시 시도해주세요.",
+            ? dictionary.feedback.rateLimited
+            : dictionary.feedback.failed,
         );
         setStatus("error");
         return;
@@ -57,7 +60,7 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
         setStatus("idle");
       }, 1400);
     } catch {
-      setErrorMsg("네트워크 오류가 발생했어요.");
+      setErrorMsg(dictionary.feedback.network);
       setStatus("error");
     }
   }
@@ -69,7 +72,7 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="개발자에게 의견 보내기"
+      aria-label={dictionary.feedback.open}
       className="fixed inset-0 z-[80] flex items-center justify-center px-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) setOpen(false);
@@ -77,13 +80,13 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
       <div className="relative w-full max-w-md rounded-xl border border-border bg-bg-card p-6 shadow-panel">
-        <h2 className="text-base font-semibold text-text-primary">개발자에게 의견 보내기</h2>
-        <p className="mt-1 text-xs text-text-muted">버그, 개선 아이디어, 후기 무엇이든 환영합니다.</p>
+        <h2 className="text-base font-semibold text-text-primary">{dictionary.feedback.title}</h2>
+        <p className="mt-1 text-xs text-text-muted">{dictionary.feedback.description}</p>
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value.slice(0, MAX_LENGTH))}
           rows={6}
-          placeholder="의견을 자유롭게 남겨주세요"
+          placeholder={dictionary.feedback.placeholder}
           className="mt-4 w-full resize-none rounded-md border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none placeholder:text-text-faint focus:border-accent-info"
           disabled={submitting || sent}
           autoFocus
@@ -96,7 +99,7 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" className="px-4" onClick={() => setOpen(false)} disabled={submitting}>
-            취소
+            {dictionary.feedback.cancel}
           </Button>
           <Button
             variant="primary"
@@ -104,7 +107,7 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
             onClick={submit}
             disabled={!message.trim() || submitting || sent}
           >
-            {sent ? "전송 완료" : submitting ? "전송 중..." : "보내기"}
+            {sent ? dictionary.feedback.sent : submitting ? dictionary.feedback.submitting : dictionary.feedback.submit}
           </Button>
         </div>
       </div>
@@ -116,12 +119,12 @@ export function FeedbackButton({ reportId }: { reportId: string }) {
       <Button
         variant="ghost"
         className="px-3 sm:px-4"
-        aria-label="개발자에게 의견 보내기"
-        title="개발자에게 의견 보내기"
+        aria-label={dictionary.feedback.open}
+        title={dictionary.feedback.open}
         icon={<MessageSquare className="h-4 w-4" />}
         onClick={() => setOpen(true)}
       >
-        <span className="hidden sm:inline">의견 보내기</span>
+        <span className="hidden sm:inline">{dictionary.feedback.open}</span>
       </Button>
       {modal ? createPortal(modal, document.body) : null}
     </>

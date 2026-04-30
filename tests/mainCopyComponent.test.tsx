@@ -50,7 +50,7 @@ describe("MainCopy", () => {
 
     const text = screen.getByText(copy);
     expect(text).toHaveStyle({ whiteSpace: "normal" });
-    expect(text.style.WebkitLineClamp).toBe("2");
+    expect(text.style.webkitLineClamp).toBe("2");
     expect(Number.parseFloat(text.style.fontSize)).toBeGreaterThan(18);
   });
 
@@ -62,7 +62,7 @@ describe("MainCopy", () => {
 
     const text = screen.getByText(copy);
     expect(text).toHaveStyle({ whiteSpace: "nowrap" });
-    expect(text.style.WebkitLineClamp).toBe("");
+    expect(text.style.webkitLineClamp).toBe("");
   });
 });
 

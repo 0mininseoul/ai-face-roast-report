@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Locale } from "@/lib/i18n/locales";
 
 export type Gender = "male" | "female";
 
@@ -100,6 +101,7 @@ export interface FaceReportRow {
   analysis_tone: AnalysisTone;
   admin_note: string | null;
   manual_detected_face_count: number | null;
+  locale?: Locale | null;
   app_user_id: string | null;
   user_agent: string | null;
   ip_hash: string | null;
@@ -122,6 +124,7 @@ export interface ClientLivenessSignal {
 export interface AnalyzeRequestBody {
   gender: Gender;
   analysisTone?: AnalysisTone;
+  locale?: Locale;
   metrics: FaceMetrics;
   landmarks?: Landmark[];
   imageBase64: string;

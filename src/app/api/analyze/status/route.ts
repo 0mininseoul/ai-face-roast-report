@@ -3,6 +3,8 @@ import { NextRequest } from "next/server";
 import { analysisErrorMessage, extractErrorText } from "@/lib/analysis/errors";
 import { analysisStatusMessage, drainAnalysisQueue, isPendingAnalysisStatus, shouldWakeAnalysisJob } from "@/lib/analysis/jobRunner";
 import { postprocessReportSections } from "@/lib/analysis/reportPostprocess";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { normalizeLocale } from "@/lib/i18n/locales";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { logServiceEvent } from "@/lib/telemetry/server";
 import { reportSectionsSchema, type AnalyzeStatusResponse, type FaceReportRow } from "@/types/analysis";
@@ -23,6 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   const row = data as FaceReportRow;
+  const locale = normalizeLocale(row.locale);
   if (new Date(row.expires_at).getTime() <= Date.now()) {
     return Response.json({ error: "expired" }, { status: 410 });
   }
@@ -48,7 +51,7 @@ export async function GET(req: NextRequest) {
         {
           reportId: row.id,
           status: "failed",
-          message: "완료된 보고서 데이터가 비어 있습니다.",
+          message: getDictionary(locale).status.missingCompleteData,
           retryAfter: null,
           attemptCount: row.attempt_count ?? 0,
           modelUsed: row.model_used ?? null,
@@ -60,10 +63,11 @@ export async function GET(req: NextRequest) {
     return Response.json({
       reportId: row.id,
       status: "complete",
-      message: analysisStatusMessage(row),
+      message: analysisStatusMessage(row, locale),
       sections: postprocessReportSections(reportSectionsSchema.parse(row.report_sections_json), {
         gender: row.gender,
         tone: row.analysis_tone ?? "roast",
+        locale,
       }),
       modelUsed: row.model_used ?? null,
     } satisfies AnalyzeStatusResponse);
@@ -73,7 +77,7 @@ export async function GET(req: NextRequest) {
     return Response.json({
       reportId: row.id,
       status: "failed",
-      message: analysisStatusMessage(row),
+      message: analysisStatusMessage(row, locale),
       retryAfter: row.retry_after ?? null,
       attemptCount: row.attempt_count ?? 0,
       modelUsed: row.model_used ?? null,
@@ -83,7 +87,7 @@ export async function GET(req: NextRequest) {
   return Response.json({
     reportId: row.id,
     status: row.status,
-    message: analysisStatusMessage(row),
+    message: analysisStatusMessage(row, locale),
     retryAfter: row.retry_after ?? null,
     attemptCount: row.attempt_count ?? 0,
     modelUsed: row.model_used ?? null,

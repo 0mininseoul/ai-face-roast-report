@@ -44,6 +44,7 @@ describe("ResultHeader", () => {
       description: "AI 얼굴 분석 결과 - 이 페이지는 생성 후 24시간 뒤 사라집니다.",
       imageUrl: "https://example.com/api/share-face/report-1?v=kakao-v3",
       resultUrl: "https://example.com/result/report-1?share=kakao-v3",
+      buttonTitle: "결과 보러가기",
     });
   });
 });

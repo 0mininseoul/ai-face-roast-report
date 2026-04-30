@@ -1,3 +1,6 @@
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locales";
+
 const KST_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
   year: "numeric",
@@ -9,7 +12,8 @@ const KST_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   hour12: true,
 });
 
-export function FaceImage({ src, createdAt, fit = "cover" }: { src: string; createdAt: string; fit?: "cover" | "contain" }) {
+export function FaceImage({ src, createdAt, fit = "cover", locale = DEFAULT_LOCALE }: { src: string; createdAt: string; fit?: "cover" | "contain"; locale?: Locale }) {
+  const dictionary = getDictionary(locale);
   const imageClassName =
     fit === "contain" ? "max-h-[74vh] w-full rounded-xl bg-black/40 object-contain" : "aspect-video w-full rounded-xl object-cover";
 
@@ -17,11 +21,11 @@ export function FaceImage({ src, createdAt, fit = "cover" }: { src: string; crea
     <section className="mx-auto mb-10 max-w-6xl px-4 text-center sm:mb-16 sm:px-8">
       <div className="glass-panel mx-auto overflow-hidden rounded-2xl p-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="분석에 사용된 얼굴 캡쳐" className={imageClassName} />
+        <img src={src} alt={dictionary.result.faceAlt} className={imageClassName} />
       </div>
       <p className="mt-4 text-xs text-text-faint">
         {formatKstTimestamp(createdAt)}
-        <br />본 분석은 풍자 및 유머 목적이며 사실 진술이 아닙니다.
+        <br />{dictionary.result.satireNote}
       </p>
     </section>
   );

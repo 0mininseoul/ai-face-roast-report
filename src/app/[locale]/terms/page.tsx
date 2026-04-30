@@ -1,0 +1,138 @@
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { isLocale, type Locale } from "@/lib/i18n/locales";
+
+const termsSections: Record<Locale, Array<{ title: string; body: string[] }>> = {
+  ko: [
+    {
+      title: "제1조 목적 및 적용 범위",
+      body: [
+        "본 약관은 AI 얼평보고서 서비스(이하 '서비스')를 이용하는 사용자와 서비스 운영자 사이의 권리, 의무, 책임, 이용 조건, 제한 사항 및 기타 필요한 사항을 규정하는 것을 목적으로 합니다. 사용자가 서비스 화면에서 성별 선택, 동의 체크, 분석 시작 버튼 클릭 또는 그에 준하는 명시적 행위를 수행한 경우, 사용자는 본 약관 전체를 충분히 읽고 이해하였으며 그 내용에 구속되는 데 동의한 것으로 봅니다.",
+        "본 약관은 서비스의 웹 화면, 카메라 접근 기능, 얼굴 랜드마크 분석 기능, AI 기반 문장 생성 기능, 결과 페이지 생성 및 공유 기능, 저장된 결과 조회 기능, 기타 운영자가 서비스와 관련하여 제공하는 모든 부가 기능에 적용됩니다. 사용자가 특정 기능을 실제로 사용하지 않았더라도 서비스에 접근하거나 분석 절차를 개시한 경우에는 해당 기능과 관련된 제한 및 면책 조항이 함께 적용될 수 있습니다.",
+      ],
+    },
+    {
+      title: "제2조 서비스의 성격",
+      body: [
+        "서비스는 사용자가 제공한 카메라 프레임, 얼굴 랜드마크 좌표, 성별 선택값 및 자동 산출 메트릭을 바탕으로 유머, 풍자, 오락 목적의 텍스트 보고서를 생성하는 웹 기반 실험 서비스입니다. 서비스가 출력하는 모든 문구는 사실 확인된 의학적, 미용학적, 심리학적, 사회학적, 직업적, 법률적 판단이 아니며, 사용자의 실제 외모 가치, 인격, 능력, 건강 상태, 사회적 평가 가능성 또는 대인관계 전망을 객관적으로 판정하지 않습니다.",
+        "서비스 명칭, 화면 문구, 분석 카드, 점수, 게이지, 결론, 공유 문안, 이미지 구성 및 기타 모든 표현은 과장된 연출을 포함할 수 있습니다. 사용자는 서비스가 의도적으로 불친절하거나 공격적으로 느껴질 수 있는 표현을 생성할 수 있다는 점을 이해해야 하며, 그러한 표현을 실제 평가나 조언으로 받아들이지 않을 책임이 있습니다.",
+      ],
+    },
+    {
+      title: "제3조 이용 자격 및 본인 사용 원칙",
+      body: [
+        "서비스는 만 14세 이상 사용자만 이용할 수 있습니다. 만 14세 미만 사용자는 보호자의 동의 여부와 관계없이 서비스를 이용할 수 없으며, 사용자가 만 14세 이상 체크박스를 선택한 경우 운영자는 사용자가 해당 요건을 충족한다고 신뢰할 수 있습니다.",
+        "사용자는 본인의 얼굴만 분석 대상으로 사용할 수 있습니다. 타인의 얼굴, 연예인 사진, 지인 사진, 캡처 화면, 영상 통화 화면, 소셜 미디어 이미지, 합성 이미지, 생성형 AI 이미지, 무단 촬영물 또는 권한이 불명확한 이미지를 서비스에 입력하거나 카메라 앞에 제시해서는 안 됩니다. 사용자가 본 조항을 위반하여 발생한 분쟁, 청구, 손해, 민원, 삭제 요청, 명예훼손 주장, 개인정보 침해 주장 또는 초상권 침해 주장은 전적으로 사용자의 책임입니다.",
+        "특히 사용자는 미성년자의 얼굴 이미지를 제3자가 대신 입력하거나 촬영하여 분석해서는 안 됩니다. 만 14세 미만 아동의 얼굴은 본인 또는 보호자의 동의 여부와 관계없이 서비스에 입력할 수 없습니다.",
+      ],
+    },
+    {
+      title: "제4조 카메라 권한 및 분석 환경",
+      body: [
+        "서비스는 데스크톱 브라우저의 웹캠 권한을 필요로 하며, 사용자는 브라우저 또는 운영체제의 카메라 접근 권한을 직접 허용해야 합니다. 카메라 권한이 차단되어 있거나 브라우저가 요구 기능을 지원하지 않거나 조명, 초점, 프레임, 네트워크 상태, 기기 성능 또는 MediaPipe 모델 로딩 상태가 적절하지 않은 경우 서비스는 정상적으로 동작하지 않을 수 있습니다.",
+        "서비스는 얼굴이 정면에 안정적으로 노출되는 상황을 전제로 설계되어 있으나, 실제 분석 결과는 조명, 렌즈 왜곡, 얼굴 각도, 머리카락, 안경, 마스크, 피부 반사, 화면 밝기, 카메라 화질, 브라우저 캡처 품질, 네트워크 지연, 모델 응답 품질 및 기타 여러 우연적 요소에 의해 달라질 수 있습니다. 사용자는 이와 같은 변동 가능성을 이유로 운영자에게 결과 수정, 재분석 보장, 비용 보상 또는 손해배상을 요구할 수 없습니다.",
+        "분석 화면에서 얼굴 감지 또는 랜드마크 수집이 장시간 지연되거나 실패하는 경우, 운영자는 오류 확인과 품질 개선을 위해 저해상도 진단용 카메라 프레임 및 관련 브라우저 상태 정보를 저장할 수 있습니다. 이러한 진단용 프레임은 최종 보고서 생성을 위해 외부 AI 모델에 입력되는 분석 이미지와 별도로 취급됩니다.",
+      ],
+    },
+    {
+      title: "제5조 생성 결과 및 표현 수위",
+      body: [
+        "서비스는 사용자의 기대와 다르거나 불쾌하게 느껴질 수 있는 표현, 과장된 비유, 신랄한 농담, 낮은 점수, 부정적 묘사, 공격적인 어조 또는 사회적으로 예민하게 받아들여질 수 있는 문구를 생성할 수 있습니다. 사용자는 분석 시작 전 이러한 가능성을 인지하고, 서비스 결과를 열람할지 여부를 스스로 판단해야 합니다.",
+        "운영자는 생성형 AI 모델의 모든 출력 문장을 사전에 검수하거나 완전히 통제하지 못합니다. 운영자는 명백히 위험하거나 불법적인 사용을 줄이기 위해 합리적인 제한을 둘 수 있으나, 특정 문장이 사용자의 취향, 감정 상태, 문화적 배경 또는 개인적 경험에 맞게 완화될 것을 보장하지 않습니다.",
+      ],
+    },
+    {
+      title: "제6조 금지 행위",
+      body: [
+        "사용자는 서비스에 과도한 요청을 보내거나, 자동화 도구를 이용해 대량 분석을 수행하거나, API를 우회 호출하거나, 결과 저장소에 비정상적으로 접근하거나, 서비스의 rate limit, 미들웨어, 인증, 저장 정책, 이미지 접근 정책 또는 기타 기술적 제한을 우회해서는 안 됩니다.",
+        "사용자는 타인의 얼굴 또는 미성년자의 얼굴을 무단으로 분석하는 행위, 결과를 조작하여 제3자를 모욕하는 행위, 서비스 결과를 실제 신상 평가나 괴롭힘 자료로 사용하는 행위, 차별적 목적으로 사용하는 행위, 운영자의 의도와 무관하게 서비스 명칭 또는 결과물을 사칭하는 행위, 리버스 엔지니어링 또는 보안 취약점 악용 행위를 해서는 안 됩니다.",
+      ],
+    },
+    {
+      title: "제7조 결과 페이지와 공유",
+      body: [
+        "분석이 완료되면 서비스는 일정 기간 접근 가능한 결과 페이지를 생성할 수 있습니다. 결과 페이지 URL을 제3자에게 전달하거나 공개 게시판, 메신저, 소셜 미디어, 커뮤니티, 검색 가능한 공간 또는 기타 외부 채널에 공유하는 행위는 사용자의 독자적 판단과 책임으로 이루어집니다.",
+        "공유된 결과는 수신자가 저장, 캡처, 재공유, 편집 또는 오해할 수 있으며, 운영자는 사용자의 공유 행위 이후 발생하는 평판상 손해, 관계상 갈등, 삭제 불능, 2차 유포, 검색 노출, 캡처 보관 또는 제3자의 반응에 대해 책임지지 않습니다.",
+      ],
+    },
+    {
+      title: "제8조 지식재산권 및 이용 허락",
+      body: [
+        "서비스를 구성하는 화면, 코드, 디자인, 문구 구조, 분석 흐름, 프롬프트 구성, 결과 페이지 레이아웃, 그래픽 요소 및 기타 콘텐츠에 관한 권리는 운영자 또는 정당한 권리자에게 귀속됩니다. 사용자는 서비스 이용을 위해 필요한 범위에서만 이를 일시적으로 이용할 수 있으며, 운영자의 사전 서면 동의 없이 복제, 배포, 판매, 2차 저작물 제작, 상업적 이용 또는 경쟁 서비스 구축에 사용할 수 없습니다.",
+        "사용자가 서비스에 입력하거나 카메라로 제공한 본인 이미지에 대한 권리는 원칙적으로 사용자에게 있으나, 사용자는 서비스가 분석 수행, 결과 페이지 생성, 오류 확인, 품질 개선, 남용 방지 및 운영상 필요한 범위에서 분석용 이미지와 진단용 카메라 프레임을 처리할 수 있도록 허락합니다.",
+        "사용자가 결과 페이지의 '의견 보내기' 기능을 통해 자발적으로 전송한 텍스트 메시지에 대해, 사용자는 운영자가 해당 메시지를 서비스 품질 개선, 버그 및 오류 신고 처리, 운영 통계 확인, 향후 기능 우선순위 결정, 신고 및 분쟁 대응, 서비스 운영 관련 자료 작성 목적으로 비독점적, 무상, 기간 제한 없이 이용할 수 있도록 허락합니다. 사용자는 의견 메시지를 전송할 때 본인 또는 타인의 개인정보, 비밀, 영업비밀, 권리 침해 가능성이 있는 정보를 포함하지 않을 책임이 있으며, 부적절한 내용 전송으로 인한 분쟁의 책임은 사용자에게 있습니다.",
+      ],
+    },
+    {
+      title: "제9조 서비스 변경, 중단 및 데이터 삭제",
+      body: [
+        "운영자는 서비스의 기능, UI, 분석 방식, 프롬프트, 보관 기간, 공유 방식, rate limit, 지원 브라우저, 외부 API 제공자, 저장 구조 또는 약관 내용을 사전 통지 없이 변경할 수 있습니다. 실험적 MVP 단계에서는 기능이 예고 없이 제거되거나 결과 형식이 달라질 수 있으며, 사용자는 특정 버전의 기능 제공을 요구할 수 없습니다.",
+        "운영자는 서버 비용, 외부 API 장애, 보안 문제, 법적 요청, 남용 발생, 데이터베이스 문제, 배포 오류, 브라우저 정책 변경 또는 기타 운영상 필요가 있는 경우 서비스 전부 또는 일부를 임시 또는 영구 중단할 수 있습니다.",
+      ],
+    },
+    {
+      title: "제10조 면책 및 책임 제한",
+      body: [
+        "운영자는 서비스가 항상 중단 없이 제공되거나, 모든 브라우저와 기기에서 동일하게 동작하거나, 생성 결과가 정확하거나, 사용자의 기대에 부합하거나, 사용자의 감정적 반응을 유발하지 않을 것을 보장하지 않습니다. 서비스는 오락성 실험 서비스이며, 사용자가 결과를 실제 판단 근거로 사용함으로써 발생한 모든 불이익은 사용자 본인의 책임입니다.",
+        "관계 법령상 허용되는 범위 내에서 운영자의 책임은 운영자의 고의 또는 중대한 과실이 입증된 경우로 제한됩니다. 사용자는 서비스 결과로 인한 불쾌감, 당혹감, 자존감 저하, 농담 실패, 인간관계 문제, 공유 후 후회, 이미지 유출, 캡처 유포, 재분석 욕구 또는 기타 간접적이고 주관적인 손해에 대해 운영자에게 배상을 청구할 수 없습니다.",
+      ],
+    },
+    {
+      title: "제11조 약관의 해석과 변경",
+      body: [
+        "본 약관의 일부 조항이 무효, 취소 또는 집행 불능으로 판단되더라도 나머지 조항의 효력은 유지됩니다. 조항의 제목은 편의를 위한 것이며, 조항의 해석 범위를 제한하지 않습니다.",
+        "운영자는 필요한 경우 본 약관을 변경할 수 있으며, 변경된 약관은 서비스 화면 또는 관련 문서에 게시된 시점부터 적용됩니다. 사용자가 변경 후 서비스를 계속 이용하는 경우 변경된 약관에 동의한 것으로 봅니다.",
+      ],
+    },
+    {
+      title: "부칙",
+      body: ["본 약관은 2026년 4월 26일부터 적용됩니다. 본 문서는 서비스의 실험적 성격을 반영하여 수시로 수정될 수 있습니다."],
+    },
+  ],
+  en: [
+    { title: "1. Purpose and Scope", body: ["These terms define the conditions and responsibilities for using AI Face Roast Report. By selecting options, checking consent boxes, or starting analysis, you agree to these terms."] },
+    { title: "2. Nature of the Service", body: ["The service is an experimental entertainment product that generates humorous and satirical AI reports from face images and landmark-based metrics. Results are not medical, psychological, legal, or factual judgments."] },
+    { title: "3. Eligibility and Prohibited Use", body: ["You must be at least 14 years old and may analyze only your own face. Do not submit another person, a minor, unauthorized photos, synthetic images, or faces shown on another screen."] },
+    { title: "4. Results and Responsibility", body: ["Generated results may feel harsh, offensive, or inaccurate. You must not use them as real evaluations or harassment material. Sharing a result URL is your own decision and responsibility."] },
+    { title: "Supplement", body: ["These terms apply from April 26, 2026 and may be updated as the experimental service changes."] },
+  ],
+  ja: [
+    { title: "1. 目的および適用範囲", body: ["本規約はAI顔面ローストレポートの利用条件と責任範囲を定めます。性別選択、同意チェック、分析開始などを行った場合、本規約に同意したものとみなします。"] },
+    { title: "2. サービスの性格", body: ["本サービスは顔画像とランドマーク由来のメトリックを用いて、ユーモアと風刺目的のAIレポートを生成する実験的な娯楽サービスです。結果は医学的、心理学的、法的、事実上の判断ではありません。"] },
+    { title: "3. 利用資格および禁止行為", body: ["利用者は14歳以上で、自分自身の顔のみを分析できます。他人、未成年者、無断撮影物、合成画像、別画面に表示された顔を入力してはいけません。"] },
+    { title: "4. 結果と責任", body: ["生成結果はきつい、攻撃的、不正確に感じられる場合があります。実際の評価や嫌がらせ資料として使用してはいけません。結果URLの共有は利用者自身の判断と責任で行われます。"] },
+    { title: "附則", body: ["本規約は2026年4月26日から適用され、実験的サービスの変更に応じて修正される場合があります。"] },
+  ],
+};
+
+export function generateMetadata({ params }: { params: { locale: string } }): Metadata {
+  if (!isLocale(params.locale)) notFound();
+  return { title: getDictionary(params.locale).metadata.termsTitle };
+}
+
+export default function LocalizedTermsPage({ params }: { params: { locale: string } }) {
+  if (!isLocale(params.locale)) notFound();
+  const dictionary = getDictionary(params.locale);
+  const sections = termsSections[params.locale];
+  return (
+    <main className="mx-auto max-w-5xl px-6 py-14">
+      <article className="border border-border bg-bg-card/55 p-8 shadow-panel">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-text-faint">AI FACE REPORT TERMS OF SERVICE</p>
+        <h1 className="mt-4 text-4xl font-black">{dictionary.entry.terms}</h1>
+        <p className="mt-5 text-sm leading-7 text-text-muted">{dictionary.legal.termsIntro}</p>
+        {dictionary.legal.translationNotice && <p className="mt-3 text-xs leading-6 text-text-faint">{dictionary.legal.translationNotice}</p>}
+        <div className="mt-10 space-y-9 text-[13px] leading-7 text-text-muted">
+          {sections.map((section) => (
+            <section key={section.title}>
+              <h2 className="mb-3 text-base font-extrabold text-text-primary">{section.title}</h2>
+              {section.body.map((paragraph) => (
+                <p key={paragraph} className="mt-3">{paragraph}</p>
+              ))}
+            </section>
+          ))}
+        </div>
+      </article>
+    </main>
+  );
+}

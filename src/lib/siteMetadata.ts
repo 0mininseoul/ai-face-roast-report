@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getDictionary } from "@/lib/i18n/dictionary";
+import { DEFAULT_LOCALE, localeToOgLocale, type Locale } from "@/lib/i18n/locales";
 
 export const SITE_TITLE = "AI 얼평보고서";
 export const SITE_DESCRIPTION = "Forensic-grade facial diagnostics. Powered by AI.";
@@ -43,6 +45,7 @@ export function socialMetadata({
   path = "/",
   title = SITE_TITLE,
   description = SITE_DESCRIPTION,
+  locale = DEFAULT_LOCALE,
   imageUrl,
   imagePath,
   imageAlt,
@@ -54,6 +57,7 @@ export function socialMetadata({
   path?: string;
   title?: string;
   description?: string;
+  locale?: Locale;
   imageUrl?: string;
   imagePath?: string;
   imageAlt?: string;
@@ -81,9 +85,9 @@ export function socialMetadata({
       title,
       description,
       url,
-      siteName: SITE_TITLE,
+      siteName: getDictionary(locale).brand.title,
       images: [image],
-      locale: "ko_KR",
+      locale: localeToOgLocale(locale),
       type: "website",
     },
     twitter: {
@@ -93,4 +97,16 @@ export function socialMetadata({
       images: [image],
     },
   };
+}
+
+export function localizedSiteMetadata(locale: Locale, baseUrl: string): Metadata {
+  const dictionary = getDictionary(locale);
+  return socialMetadata({
+    baseUrl,
+    path: `/${locale}`,
+    locale,
+    title: dictionary.brand.title,
+    description: dictionary.metadata.siteDescription,
+    imageAlt: dictionary.brand.ogAlt,
+  });
 }
