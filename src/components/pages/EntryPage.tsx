@@ -164,8 +164,10 @@ function ChoiceCard({
           : "border-border bg-bg-card text-text-muted hover:border-border-bright hover:bg-bg-card-hover",
       ].join(" ")}
     >
-      <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>
-      <span className="mt-1 block text-sm font-black">{title}</span>
+      <span className="inline-flex items-center justify-center gap-2">
+        <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>
+        <span className="block text-sm font-black">{title}</span>
+      </span>
       {description && <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>}
     </button>
   );

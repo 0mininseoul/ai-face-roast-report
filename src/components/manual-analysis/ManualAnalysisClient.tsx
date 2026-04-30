@@ -136,7 +136,13 @@ export function ManualAnalysisClient({ mode = "public", locale = DEFAULT_LOCALE 
     <main className="min-h-screen bg-black px-4 py-6 sm:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-center sm:justify-between">
-          <Logo locale={reportLocale} />
+          <Link
+            href={`/${reportLocale}`}
+            aria-label={dictionary.result.homeAria}
+            className="w-fit rounded-xl outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-accent-info focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary"
+          >
+            <Logo locale={reportLocale} />
+          </Link>
           <span className="w-fit text-xs font-black uppercase tracking-[0.16em] text-text-muted">
             {isAdmin ? dictionary.manual.adminBadge : dictionary.manual.publicBadge}
           </span>
@@ -358,8 +364,10 @@ function ChoiceButton({
       ].join(" ")}
       onClick={onClick}
     >
-      {icon && <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>}
-      <span className={["block text-sm font-black", icon ? "mt-1" : ""].join(" ")}>{title}</span>
+      <span className="inline-flex items-center justify-center gap-2">
+        {icon && <span className={active ? "text-accent-info" : "text-text-muted"}>{icon}</span>}
+        <span className="block text-sm font-black">{title}</span>
+      </span>
       {description && <span className="mt-1 block text-xs leading-5 text-text-muted">{description}</span>}
     </button>
   );
