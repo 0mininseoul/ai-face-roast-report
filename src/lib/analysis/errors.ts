@@ -30,7 +30,12 @@ export function analysisErrorMessage(error: unknown, locale: Locale = DEFAULT_LO
     return messages.timeout;
   }
 
-  if (normalized.includes("missing gemini_api_key") || normalized.includes("api key")) {
+  if (
+    normalized.includes("missing google_cloud_project") ||
+    normalized.includes("google_service_account_key_base64") ||
+    normalized.includes("google_application_credentials") ||
+    normalized.includes("credentials")
+  ) {
     return messages.config;
   }
 

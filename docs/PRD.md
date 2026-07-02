@@ -630,7 +630,7 @@ OUTPUT SCHEMA:
 
 - 수집 항목: 카메라로 캡쳐된 얼굴 이미지, 478개 랜드마크 좌표, 산출 메트릭, 성별, User Agent, IP 해시
 - 수집 목적: AI 분석 결과 생성, 결과 페이지 제공, 서비스 운영 및 개선
-- 외부 처리 위탁: Google (Gemini API — 이미지 및 메트릭 전송), Supabase (저장)
+- 외부 처리 위탁: Google Cloud Vertex AI Gemini (이미지 및 메트릭 전송), Supabase (저장)
 - 보유 기간: **결과 페이지는 24시간 후 비활성화되나, 분석 메타데이터 및 이미지는 서비스 운영·개선 목적으로 영구 보관됨**
 - 사용자 권리: 삭제 요청은 contact 이메일 주소를 통해 가능 (UI 내 즉시 삭제 버튼은 미제공)
 - 쿠키/Local Storage: 세션 식별 외 사용하지 않음 (트래킹 쿠키 없음)
@@ -723,7 +723,7 @@ OUTPUT SCHEMA:
 - API 라우트 IP 기반 rate limit (per IP, 1분 5회 / 1시간 30회)
 - 결과 URL은 UUID v4 (추측 불가)
 - Supabase service role key는 서버에서만 사용
-- Gemini API key는 서버에서만 사용 (클라이언트 노출 금지)
+- Vertex AI 인증 정보는 서버에서만 사용 (클라이언트 노출 금지)
 
 ---
 
@@ -774,7 +774,7 @@ OUTPUT SCHEMA:
 
 ## 14. 외부 의존성 / 셋업 필요
 
-- **Gemini API key** (Google AI Studio에서 발급)
+- **Vertex AI 서비스 계정** (`roles/aiplatform.user`) 및 로컬/Vercel 인증 환경변수
 - **Supabase 프로젝트** (사용자가 별도로 CLI로 셋업) — DB 스키마, Storage 버킷, RLS 정책
 - **Kakao 개발자 앱** (카카오톡 공유용 JavaScript key)
 - **Pretendard 폰트 파일** (self-host용)
@@ -784,7 +784,7 @@ OUTPUT SCHEMA:
   - 권장 사양: **1200×630 PX, PNG, 1MB 이하**
   - 용도: 모든 라우트(`/`, `/analyze`, `/result/[id]`)의 OpenGraph + Twitter Card 정적 이미지로 공통 사용 (결과별 동적 OG는 미적용 — 카톡 공유는 Kakao Feed Template에서 얼굴 썸네일을 별도로 사용함)
   - 카카오톡 공유 미리보기는 OG가 아닌 Kakao Feed Template 카드에서 별도 처리되므로, 이 정적 OG는 트위터/iMessage/슬랙 등 외부 채널의 링크 미리보기 용도
-- **Vercel 프로젝트** + 환경변수 (GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, KAKAO_JS_KEY)
+- **Vercel 프로젝트** + 환경변수 (GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, GOOGLE_GENAI_USE_VERTEXAI, VERTEX_AI_MODEL, GOOGLE_SERVICE_ACCOUNT_KEY_BASE64, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, KAKAO_JS_KEY)
 
 ---
 

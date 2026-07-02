@@ -11,7 +11,12 @@ cp .env.local.example .env.local
 
 필수 환경변수:
 
-- `GEMINI_API_KEY`
+- `GOOGLE_CLOUD_PROJECT`
+- `GOOGLE_CLOUD_LOCATION`
+- `GOOGLE_GENAI_USE_VERTEXAI`
+- `VERTEX_AI_MODEL`
+- `GOOGLE_APPLICATION_CREDENTIALS` (local)
+- `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` (Vercel)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -24,6 +29,8 @@ cp .env.local.example .env.local
 
 - `prompts/analyze-system.md`
 - `prompts/live-comment.md`
+
+Gemini 호출은 Google Cloud Vertex AI 인증을 사용합니다. 로컬에서는 `.secrets/` 아래 서비스 계정 JSON 경로를 `GOOGLE_APPLICATION_CREDENTIALS`에 지정하고, Vercel에서는 같은 JSON을 base64로 인코딩해 `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64`에 넣습니다.
 
 ## Supabase
 

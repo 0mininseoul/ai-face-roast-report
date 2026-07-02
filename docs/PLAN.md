@@ -7,10 +7,10 @@
 **Architecture:**
 - Next.js 14 (App Router) on Vercel; Edge runtime for streaming Gemini responses (SSE).
 - Browser-side: MediaPipe Tasks Vision (FaceLandmarker, 478 landmarks @30fps) → metrics calculation in pure TS (testable).
-- Server-side: Gemini 2.5 Pro for the one-shot deep analysis (vision + metrics + gender → §0~§5 + mainCopy), Gemini 2.5 Flash for the live feed (5–10s cadence). Supabase Postgres + Storage for persistence.
+- Server-side: Vertex AI Gemini 2.5 Pro for the one-shot deep analysis (vision + metrics + gender → §0~§5 + mainCopy), Gemini 2.5 Flash for the live feed (5–10s cadence). Supabase Postgres + Storage for persistence.
 - Result page is a public, randomly-IDed URL that becomes inaccessible 24h after creation (DB row preserved, just gated by `expires_at`). Kakao SDK for sharing.
 
-**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, Pretendard, Supabase JS SDK, `@google/generative-ai`, `@mediapipe/tasks-vision`, Howler.js, Framer Motion, html2canvas, Kakao JS SDK v2, Vitest (unit), Playwright (smoke), pnpm.
+**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, Pretendard, Supabase JS SDK, `@google/genai`, `@mediapipe/tasks-vision`, Howler.js, Framer Motion, html2canvas, Kakao JS SDK v2, Vitest (unit), Playwright (smoke), pnpm.
 
 **PRD reference:** `docs/PRD.md`
 
@@ -57,7 +57,7 @@ ai-얼평보고서/
 │   │   │   ├── metricsCalculator.ts    Pure functions on landmarks (TDD)
 │   │   │   └── overlayPlacement.ts     Pure layout slotting (TDD)
 │   │   ├── gemini/
-│   │   │   ├── client.ts               GoogleGenerativeAI client + model IDs
+│   │   │   ├── client.ts               GoogleGenAI Vertex AI client + model IDs
 │   │   │   ├── analyzePrompt.ts        System prompt for Gemini Pro analysis
 │   │   │   └── liveCommentPrompt.ts    System prompt for Gemini Flash live
 │   │   ├── supabase/
@@ -118,7 +118,7 @@ Accept defaults at any remaining prompts. The scaffolder will create `src/app/pa
 - [ ] **Step 2: Install runtime deps**
 
 ```bash
-pnpm add @google/generative-ai @supabase/supabase-js @mediapipe/tasks-vision framer-motion howler html2canvas
+pnpm add @google/genai @supabase/supabase-js @mediapipe/tasks-vision framer-motion howler html2canvas
 pnpm add -D @types/howler vitest @vitejs/plugin-react @testing-library/react @testing-library/jest-dom jsdom
 ```
 
@@ -137,8 +137,13 @@ Add to `.gitignore` (append):
 - [ ] **Step 4: Create `.env.local.example`**
 
 ```env
-# Gemini
-GEMINI_API_KEY=
+# Vertex AI Gemini
+GOOGLE_CLOUD_PROJECT=
+GOOGLE_CLOUD_LOCATION=global
+GOOGLE_GENAI_USE_VERTEXAI=true
+VERTEX_AI_MODEL=gemini-2.5-pro
+GOOGLE_APPLICATION_CREDENTIALS=
+GOOGLE_SERVICE_ACCOUNT_KEY_BASE64=
 
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
@@ -1218,18 +1223,21 @@ git commit -m "feat: add MediaPipe FaceLandmarker singleton + useCamera/useFaceL
 
 ```ts
 // src/lib/gemini/client.ts
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-export const MODEL_ANALYSIS = "gemini-2.5-pro";
-export const MODEL_LIVE = "gemini-2.5-flash";
+export const MODEL_ANALYSIS = process.env.VERTEX_AI_MODEL ?? "gemini-2.5-pro";
+export const MODEL_LIVE = process.env.VERTEX_AI_LIVE_MODEL ?? "gemini-2.5-flash";
 
-let cached: GoogleGenerativeAI | null = null;
+let cached: GoogleGenAI | null = null;
 
-export function getGenAi(): GoogleGenerativeAI {
+export function getGenAi(): GoogleGenAI {
   if (cached) return cached;
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY missing");
-  cached = new GoogleGenerativeAI(key);
+  if (!process.env.GOOGLE_CLOUD_PROJECT) throw new Error("GOOGLE_CLOUD_PROJECT missing");
+  cached = new GoogleGenAI({
+    vertexai: true,
+    project: process.env.GOOGLE_CLOUD_PROJECT,
+    location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
+  });
   return cached;
 }
 ```
@@ -1487,11 +1495,7 @@ export async function POST(req: NextRequest) {
         send({ type: "report_id", reportId });
 
         const ai = getGenAi();
-        const model = ai.getGenerativeModel({
-          model: MODEL_ANALYSIS,
-          systemInstruction: buildAnalyzeSystemPrompt(),
-          generationConfig: { responseMimeType: "application/json", temperature: 1.0 },
-        });
+        const model = MODEL_ANALYSIS;
 
         const userText = buildAnalyzeUserPrompt(body.gender, body.metrics, reportId);
         const result = await model.generateContentStream({
@@ -1649,7 +1653,7 @@ export async function POST(req: NextRequest) {
   const previous = (row?.live_feed_json as string[] | null) ?? [];
 
   const ai = getGenAi();
-  const model = ai.getGenerativeModel({ model: MODEL_LIVE, generationConfig: { temperature: 1.0 } });
+  const model = MODEL_LIVE;
 
   const cleanBase64 = body.imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const result = await model.generateContent({
@@ -3019,7 +3023,7 @@ export default function Privacy() {
       <p>AI 분석 결과 생성, 결과 페이지 제공, 서비스 운영 및 개선.</p>
       <h2>3. 외부 처리 위탁</h2>
       <ul>
-        <li>Google (Gemini API): 이미지 및 메트릭 데이터를 분석 처리에 사용</li>
+        <li>Google Cloud Vertex AI Gemini: 이미지 및 메트릭 데이터를 분석 처리에 사용</li>
         <li>Supabase Inc.: 분석 결과 및 이미지 저장소 운영</li>
         <li>Vercel Inc.: 서비스 호스팅</li>
       </ul>
@@ -3193,7 +3197,8 @@ module.exports = {
    pnpm install
    ```
 2. Copy env: `cp .env.local.example .env.local` and fill:
-   - `GEMINI_API_KEY` from https://aistudio.google.com/apikey
+   - `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_GENAI_USE_VERTEXAI`, `VERTEX_AI_MODEL`
+   - `GOOGLE_APPLICATION_CREDENTIALS` for local Vertex AI auth, or `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` for Vercel
    - Supabase URL/keys (after `supabase link`)
    - `NEXT_PUBLIC_KAKAO_JS_KEY` from https://developers.kakao.com
 3. Migrate DB:
