@@ -50,6 +50,7 @@ vi.mock("@/lib/telemetry/server", () => ({
 }));
 
 const REPORT_ID = "1f03fdfd-89df-44bf-81e3-cb59487276a7";
+const PERMANENT_SHARE_REPORT_ID = "55c6cf35-ed8b-46e3-b9dc-7a6122b87712";
 
 describe("ResultPageContent pending job wake", () => {
   beforeEach(() => {
@@ -96,13 +97,22 @@ describe("ResultPageContent pending job wake", () => {
     expect(mocks.drainAnalysisQueue).not.toHaveBeenCalled();
     expect(mocks.waitUntil).not.toHaveBeenCalled();
   });
+
+  it("renders an expired page for permanent share image reports without exposing the result", async () => {
+    mocks.single.mockResolvedValue({ data: { ...completeReport(), expires_at: "2026-05-06T17:59:35.907+09:00" }, error: null });
+
+    const result = await ResultPageContent({ id: PERMANENT_SHARE_REPORT_ID, requestedLocale: "ko" });
+
+    expect(result).toBeTruthy();
+    expect(mocks.notFound).not.toHaveBeenCalled();
+  });
 });
 
 function pendingReport({ status }: { status: "queued" | "processing" | "retrying" | "analyzing" }) {
   return {
     id: REPORT_ID,
     created_at: "2026-04-30T01:39:18.845499+09:00",
-    expires_at: "2026-05-07T01:39:18.389+09:00",
+    expires_at: "2099-05-07T01:39:18.389+09:00",
     gender: "male",
     locale: "ko",
     status,
@@ -110,6 +120,51 @@ function pendingReport({ status }: { status: "queued" | "processing" | "retrying
     locked_until: null,
     face_image_path: `${REPORT_ID}/manual-upload.jpg`,
     report_sections_json: null,
+    analysis_source: "manual_upload",
+    analysis_tone: "balanced",
+  };
+}
+
+function completeReport() {
+  return {
+    id: PERMANENT_SHARE_REPORT_ID,
+    created_at: "2026-04-29T17:59:36.241054+09:00",
+    expires_at: "2026-05-06T17:59:35.907+09:00",
+    gender: "male",
+    locale: "ko",
+    status: "complete",
+    retry_after: null,
+    locked_until: null,
+    face_image_path: `${PERMANENT_SHARE_REPORT_ID}/manual-upload.jpg`,
+    report_sections_json: {
+      meta: { reportId: PERMANENT_SHARE_REPORT_ID, confidence: 90, complianceText: "ok" },
+      geometry: { asymmetry: "ok", phi: "ok", thirds: "ok", fifths: "ok", faceAspect: "ok" },
+      parts: {
+        forehead: { metricsText: "ok", comment: "ok" },
+        eyes: { metricsText: "ok", comment: "ok" },
+        nose: { metricsText: "ok", comment: "ok" },
+        mouth: { metricsText: "ok", comment: "ok" },
+        jaw: { metricsText: "ok", comment: "ok" },
+        skin: { observation: "ok", comment: "ok" },
+      },
+      scores: {
+        likability: 70,
+        trust: 70,
+        symmetry: 70,
+        balance: 70,
+        attractiveness: 70,
+        comments: ["a", "b", "c", "d", "e"],
+      },
+      impression: {
+        keywords: ["a", "b", "c"],
+        estimatedAge: 40,
+        estimatedAgeReal: 40,
+        ageBucket: "over_35",
+        physiognomy: "ok",
+      },
+      conclusion: "ok",
+      mainCopy: "무게감과 편안함이 같이 보이는 얼굴입니다",
+    },
     analysis_source: "manual_upload",
     analysis_tone: "balanced",
   };

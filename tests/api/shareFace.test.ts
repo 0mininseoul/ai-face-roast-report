@@ -70,4 +70,24 @@ describe("GET /api/share-face/[id]", () => {
     expect(response.status).toBe(404);
     expect(mocks.download).not.toHaveBeenCalled();
   });
+
+  it("serves allowlisted permanent share images after report expiry", async () => {
+    mocks.single.mockResolvedValueOnce({
+      data: {
+        id: "55c6cf35-ed8b-46e3-b9dc-7a6122b87712",
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+        status: "complete",
+        face_image_path: "55c6cf35-ed8b-46e3-b9dc-7a6122b87712/manual-upload.jpg",
+      },
+      error: null,
+    });
+
+    const response = await GET(new Request("https://example.com/api/share-face/55c6cf35-ed8b-46e3-b9dc-7a6122b87712"), {
+      params: { id: "55c6cf35-ed8b-46e3-b9dc-7a6122b87712" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(mocks.download).toHaveBeenCalledWith("55c6cf35-ed8b-46e3-b9dc-7a6122b87712/manual-upload.jpg");
+  });
 });
